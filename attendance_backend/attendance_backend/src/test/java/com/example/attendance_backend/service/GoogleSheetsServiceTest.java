@@ -1,9 +1,8 @@
 package com.example.attendance_backend.service;
 
+import com.example.attendance_backend.service.impl.GoogleSheetsServiceImpl;
 import com.example.attendance_backend.util.SheetConstants;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,8 +23,8 @@ class GoogleSheetsServiceTest {
     }
 
     @Test
-    void testServiceWithoutConnectionThrowsException() {
-        GoogleSheetsService service = new GoogleSheetsService(null);
+    void testServiceImplWithoutConnectionThrowsException() {
+        GoogleSheetsService service = new GoogleSheetsServiceImpl(null);
         assertFalse(service.isConnected());
         assertThrows(IllegalStateException.class, () -> service.readRange("A1:B2"));
     }
