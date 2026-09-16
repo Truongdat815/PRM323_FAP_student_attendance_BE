@@ -1,10 +1,13 @@
 package com.example.attendance_backend.service.impl;
 
+import com.example.attendance_backend.dto.request.LoginRequest;
 import com.example.attendance_backend.dto.request.RegisterRequest;
+import com.example.attendance_backend.dto.response.AuthResponse;
 import com.example.attendance_backend.dto.response.UserResponse;
 import com.example.attendance_backend.exception.AppException;
 import com.example.attendance_backend.model.User;
 import com.example.attendance_backend.repository.UserRepository;
+import com.example.attendance_backend.security.JwtTokenProvider;
 import com.example.attendance_backend.service.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +32,40 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Autowired
-    public AuthServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AuthServiceImpl(UserRepository userRepository,
+                           PasswordEncoder passwordEncoder,
+                           JwtTokenProvider jwtTokenProvider) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtTokenProvider = jwtTokenProvider;
+    }
+
+    @Override
+    public AuthResponse login(LoginRequest request) throws IOException {
+        String username = request.getUsername().trim();
+        String password = request.getPassword();
+
+        // 1. Tìm tài khoản trong sheet USERS
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Tên tài khoản hoặc mật khẩu không chính xác."));
+
+        // 2. So khớp mật khẩu đã băm bằng BCrypt
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Tên tài khoản hoặc mật khẩu không chính xác.");
+        }
+
+        // 3. Sinh JWT Token
+        String token = jwtTokenProvider.generateToken(user);
+        log.info("✅ Đăng nhập thành công: username={}, role={}", username, user.getRoleId());
+
+        return AuthResponse.builder()
+                .token(token)
+                .tokenType("Bearer")
+                .user(UserResponse.fromUser(user))
+                .build();
     }
 
     @Override

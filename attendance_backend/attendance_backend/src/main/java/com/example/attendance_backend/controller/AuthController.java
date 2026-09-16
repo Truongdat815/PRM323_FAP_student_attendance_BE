@@ -1,7 +1,9 @@
 package com.example.attendance_backend.controller;
 
+import com.example.attendance_backend.dto.request.LoginRequest;
 import com.example.attendance_backend.dto.request.RegisterRequest;
 import com.example.attendance_backend.dto.response.ApiResponse;
+import com.example.attendance_backend.dto.response.AuthResponse;
 import com.example.attendance_backend.dto.response.UserResponse;
 import com.example.attendance_backend.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,5 +40,12 @@ public class AuthController {
         UserResponse response = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Đăng ký tài khoản thành công", response));
+    }
+
+    @PostMapping("/login")
+    @Operation(summary = "Đăng nhập tài khoản", description = "Xác thực tài khoản và mật khẩu, trả về Bearer JWT Token")
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) throws IOException {
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(ApiResponse.ok("Đăng nhập thành công", response));
     }
 }
