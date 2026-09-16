@@ -65,4 +65,14 @@ public interface GoogleSheetsService {
      * Lọc và lấy tất cả các dòng khớp với giá trị tại cột chỉ định.
      */
     List<List<Object>> findRows(String spreadsheetId, String sheetName, int columnIndex, String searchValue) throws IOException;
+
+    /**
+     * Xóa sạch một dòng theo số thứ tự dòng (1-indexed) trên Google Sheets.
+     */
+    void deleteRow(String spreadsheetId, String sheetName, int rowIndex) throws IOException;
+
+    /**
+     * Xóa một dòng sử dụng spreadsheetId mặc định.
+     */
+    void deleteRow(String sheetName, int rowIndex) throws IOException;
 }

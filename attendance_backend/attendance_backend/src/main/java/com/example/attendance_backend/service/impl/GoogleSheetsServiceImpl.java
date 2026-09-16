@@ -3,9 +3,7 @@ package com.example.attendance_backend.service.impl;
 import com.example.attendance_backend.service.GoogleSheetsService;
 import com.example.attendance_backend.util.SheetConstants;
 import com.google.api.services.sheets.v4.Sheets;
-import com.google.api.services.sheets.v4.model.AppendValuesResponse;
-import com.google.api.services.sheets.v4.model.UpdateValuesResponse;
-import com.google.api.services.sheets.v4.model.ValueRange;
+import com.google.api.services.sheets.v4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -132,5 +130,44 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             }
         }
         return matches;
+    }
+
+    @Override
+    public void deleteRow(String spreadsheetId, String sheetName, int rowIndex) throws IOException {
+        ensureConnected();
+        Integer sheetId = getSheetIdByTitle(spreadsheetId, sheetName);
+        if (sheetId == null) {
+            throw new IllegalArgumentException("Không tìm thấy Sheet với tên: " + sheetName);
+        }
+
+        DeleteDimensionRequest deleteDimension = new DeleteDimensionRequest()
+                .setRange(new DimensionRange()
+                        .setSheetId(sheetId)
+                        .setDimension("ROWS")
+                        .setStartIndex(rowIndex - 1)
+                        .setEndIndex(rowIndex));
+
+        Request request = new Request().setDeleteDimension(deleteDimension);
+        BatchUpdateSpreadsheetRequest batchRequest = new BatchUpdateSpreadsheetRequest()
+                .setRequests(Collections.singletonList(request));
+
+        sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute();
+    }
+
+    @Override
+    public void deleteRow(String sheetName, int rowIndex) throws IOException {
+        deleteRow(defaultSpreadsheetId, sheetName, rowIndex);
+    }
+
+    private Integer getSheetIdByTitle(String spreadsheetId, String sheetName) throws IOException {
+        Spreadsheet spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+        if (spreadsheet.getSheets() != null) {
+            for (Sheet sheet : spreadsheet.getSheets()) {
+                if (sheet.getProperties() != null && sheetName.equalsIgnoreCase(sheet.getProperties().getTitle())) {
+                    return sheet.getProperties().getSheetId();
+                }
+            }
+        }
+        return null;
     }
 }
