@@ -103,7 +103,8 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
 
     @Override
     public int findRowIndex(String spreadsheetId, String sheetName, int columnIndex, String searchValue) throws IOException {
-        List<List<Object>> rows = readSheet(sheetName);
+        String targetId = (spreadsheetId != null && !spreadsheetId.trim().isEmpty()) ? spreadsheetId : defaultSpreadsheetId;
+        List<List<Object>> rows = readRange(targetId, SheetConstants.dataRange(sheetName));
         for (int i = 0; i < rows.size(); i++) {
             List<Object> row = rows.get(i);
             if (row.size() > columnIndex) {
@@ -119,7 +120,8 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
 
     @Override
     public List<List<Object>> findRows(String spreadsheetId, String sheetName, int columnIndex, String searchValue) throws IOException {
-        List<List<Object>> rows = readSheet(sheetName);
+        String targetId = (spreadsheetId != null && !spreadsheetId.trim().isEmpty()) ? spreadsheetId : defaultSpreadsheetId;
+        List<List<Object>> rows = readRange(targetId, SheetConstants.dataRange(sheetName));
         List<List<Object>> matches = new ArrayList<>();
         for (List<Object> row : rows) {
             if (row.size() > columnIndex) {
