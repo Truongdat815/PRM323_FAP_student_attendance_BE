@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -67,13 +68,12 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
         // 4. Tạo bản ghi đăng ký mới
         String enrollmentId = "ENR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String now = Instant.now().toString();
 
         Enrollment newEnrollment = Enrollment.builder()
                 .enrollmentId(enrollmentId)
                 .courseId(courseId)
                 .studentId(student.getUserId())
-                .enrolledAt(now)
+                .enrolledAt(LocalDateTime.now())
                 .build();
 
         enrollmentRepository.save(newEnrollment);
@@ -84,7 +84,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .enrollmentId(enrollmentId)
                 .courseId(courseId)
                 .studentId(student.getUserId())
-                .enrolledAt(now)
+                .enrolledAt(LocalDateTime.now())
                 .subjectCode(course.getSubjectCode())
                 .className(course.getClassName())
                 .semester(course.getSemester())

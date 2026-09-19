@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -23,8 +25,8 @@ public class SessionCreateRequest {
     @Max(value = 6, message = "Tiết học phải từ 1 đến 6")
     private Integer slotNumber;
 
-    @NotBlank(message = "Thời gian hết hạn (expiredAt) không được để trống")
-    private String expiredAt;
+    @NotNull(message = "Thời gian hết hạn (expiredAt) không được để trống")
+    private LocalDateTime expiredAt;
 
     private String roomNetworkIp;
 }

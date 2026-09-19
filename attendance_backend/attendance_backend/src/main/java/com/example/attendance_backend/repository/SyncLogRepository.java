@@ -1,13 +1,13 @@
 package com.example.attendance_backend.repository;
 
 import com.example.attendance_backend.model.GoogleSheetSyncLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.io.IOException;
 import java.util.List;
 
-public interface SyncLogRepository {
+@Repository
+public interface SyncLogRepository extends JpaRepository<GoogleSheetSyncLog, String> {
 
-    GoogleSheetSyncLog save(GoogleSheetSyncLog log) throws IOException;
-
-    List<GoogleSheetSyncLog> findAll() throws IOException;
+    List<GoogleSheetSyncLog> findByStatus(String status);
 }

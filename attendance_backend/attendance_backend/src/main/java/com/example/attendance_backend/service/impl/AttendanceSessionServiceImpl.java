@@ -62,7 +62,6 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
         String sessionId = "SES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         String qrSecret = QRCodeGenerator.generateSecret();
         String qrBase64 = QRCodeGenerator.generateQRCodeBase64(qrSecret, 250, 250);
-        String now = LocalDateTime.now().format(FORMATTER);
 
         AttendanceSession session = AttendanceSession.builder()
                 .sessionId(sessionId)
@@ -70,9 +69,9 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
                 .slotNumber(request.getSlotNumber())
                 .qrCodeSecret(qrSecret)
                 .roomNetworkIp(request.getRoomNetworkIp() != null ? request.getRoomNetworkIp().trim() : "")
-                .expiredAt(request.getExpiredAt().trim())
+                .expiredAt(request.getExpiredAt())
                 .status("ACTIVE")
-                .createdAt(now)
+                .createdAt(LocalDateTime.now())
                 .build();
 
         attendanceSessionRepository.save(session);
@@ -112,15 +111,12 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
         }
 
         session.setStatus("CLOSED");
-        boolean updated = attendanceSessionRepository.update(sessionId, session);
-        if (!updated) {
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể cập nhật trạng thái buổi điểm danh trên Google Sheets.");
-        }
+        AttendanceSession updated = attendanceSessionRepository.save(session);
 
         syncLogService.logSync("CLOSE_SESSION", "SUCCESS", "Closed session " + sessionId);
 
-        String qrBase64 = QRCodeGenerator.generateQRCodeBase64(session.getQrCodeSecret(), 250, 250);
-        return mapToResponse(session, qrBase64);
+        String qrBase64 = QRCodeGenerator.generateQRCodeBase64(updated.getQrCodeSecret(), 250, 250);
+        return mapToResponse(updated, qrBase64);
     }
 
     private User getCurrentUser(String username) throws IOException {

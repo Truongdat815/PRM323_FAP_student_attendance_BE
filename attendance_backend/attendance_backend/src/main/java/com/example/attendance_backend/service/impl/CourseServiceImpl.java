@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -72,7 +73,6 @@ public class CourseServiceImpl implements CourseService {
                 : currentUser.getUserId();
 
         String courseId = "CRS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String now = Instant.now().toString();
 
         Course newCourse = Course.builder()
                 .courseId(courseId)
@@ -80,7 +80,7 @@ public class CourseServiceImpl implements CourseService {
                 .className(request.getClassName().trim().toUpperCase())
                 .semester(request.getSemester().trim().toUpperCase())
                 .lecturerId(lecturerId)
-                .createdAt(now)
+                .createdAt(LocalDateTime.now())
                 .build();
 
         courseRepository.save(newCourse);
@@ -107,13 +107,10 @@ public class CourseServiceImpl implements CourseService {
         existingCourse.setClassName(request.getClassName().trim().toUpperCase());
         existingCourse.setSemester(request.getSemester().trim().toUpperCase());
 
-        boolean updated = courseRepository.update(courseId, existingCourse);
-        if (!updated) {
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể cập nhật thông tin khóa học trên Google Sheets.");
-        }
+        Course updatedCourse = courseRepository.save(existingCourse);
 
         log.info("✅ Cập nhật thông tin khóa học thành công: courseId={}", courseId);
-        return CourseResponse.fromCourse(existingCourse);
+        return CourseResponse.fromCourse(updatedCourse);
     }
 
     @Override
@@ -129,10 +126,7 @@ public class CourseServiceImpl implements CourseService {
             throw new AppException(HttpStatus.FORBIDDEN, "Bạn không có quyền xóa khóa học do giảng viên khác phụ trách.");
         }
 
-        boolean deleted = courseRepository.delete(courseId);
-        if (!deleted) {
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể xóa khóa học trên Google Sheets.");
-        }
+        courseRepository.delete(existingCourse);
 
         log.info("✅ Giảng viên '{}' đã xóa khóa học: courseId={}", currentUsername, courseId);
     }

@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -56,7 +57,7 @@ class AttendanceSessionServiceTest {
         SessionCreateRequest request = SessionCreateRequest.builder()
                 .courseId("CRS-101")
                 .slotNumber(1)
-                .expiredAt("2099-12-31 23:59:59")
+                .expiredAt(LocalDateTime.of(2099, 12, 31, 23, 59, 59))
                 .roomNetworkIp("192.168.1.1")
                 .build();
 
@@ -93,7 +94,7 @@ class AttendanceSessionServiceTest {
         SessionCreateRequest request = SessionCreateRequest.builder()
                 .courseId("CRS-101")
                 .slotNumber(1)
-                .expiredAt("2099-12-31 23:59:59")
+                .expiredAt(LocalDateTime.of(2099, 12, 31, 23, 59, 59))
                 .build();
 
         User student = User.builder()

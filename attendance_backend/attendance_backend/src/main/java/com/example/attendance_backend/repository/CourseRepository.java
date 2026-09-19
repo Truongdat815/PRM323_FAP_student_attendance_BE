@@ -1,25 +1,15 @@
 package com.example.attendance_backend.repository;
 
 import com.example.attendance_backend.model.Course;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
 
-/**
- * Repository interface cho các thao tác dữ liệu khóa học trên sheet COURSES.
- */
-public interface CourseRepository {
+@Repository
+public interface CourseRepository extends JpaRepository<Course, String> {
 
-    Course save(Course course) throws IOException;
+    List<Course> findByClassName(String className);
 
-    Optional<Course> findById(String courseId) throws IOException;
-
-    List<Course> findAll() throws IOException;
-
-    List<Course> findByLecturerId(String lecturerId) throws IOException;
-
-    boolean update(String courseId, Course course) throws IOException;
-
-    boolean delete(String courseId) throws IOException;
+    List<Course> findByLecturerId(String lecturerId);
 }

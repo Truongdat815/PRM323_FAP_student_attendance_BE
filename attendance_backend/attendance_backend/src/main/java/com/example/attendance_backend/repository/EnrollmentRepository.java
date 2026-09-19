@@ -1,25 +1,20 @@
 package com.example.attendance_backend.repository;
 
 import com.example.attendance_backend.model.Enrollment;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Repository interface thao tác với sheet ENROLLMENTS.
- */
-public interface EnrollmentRepository {
+@Repository
+public interface EnrollmentRepository extends JpaRepository<Enrollment, String> {
 
-    Enrollment save(Enrollment enrollment) throws IOException;
+    List<Enrollment> findByCourseId(String courseId);
 
-    Optional<Enrollment> findById(String enrollmentId) throws IOException;
+    List<Enrollment> findByStudentId(String studentId);
 
-    List<Enrollment> findByCourseId(String courseId) throws IOException;
+    Optional<Enrollment> findByCourseIdAndStudentId(String courseId, String studentId);
 
-    List<Enrollment> findByStudentId(String studentId) throws IOException;
-
-    boolean existsByCourseIdAndStudentId(String courseId, String studentId) throws IOException;
-
-    List<Enrollment> findAll() throws IOException;
+    boolean existsByCourseIdAndStudentId(String courseId, String studentId);
 }

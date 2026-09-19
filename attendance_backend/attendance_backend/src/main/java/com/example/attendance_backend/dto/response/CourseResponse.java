@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * DTO trả về thông tin chi tiết khóa học cho Client.
  */
@@ -20,7 +22,7 @@ public class CourseResponse {
     private String className;
     private String semester;
     private String lecturerId;
-    private String createdAt;
+    private LocalDateTime createdAt;
 
     public static CourseResponse fromCourse(Course course) {
         if (course == null) {

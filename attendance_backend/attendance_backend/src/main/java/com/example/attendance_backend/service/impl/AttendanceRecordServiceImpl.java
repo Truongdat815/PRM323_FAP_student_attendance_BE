@@ -65,7 +65,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
 
         if (isExpired(session.getExpiredAt())) {
             session.setStatus("CLOSED");
-            attendanceSessionRepository.update(session.getSessionId(), session);
+            attendanceSessionRepository.save(session);
             syncLogService.logSync("CHECK_IN", "FAILED", "Session " + request.getSessionId() + " has expired. Auto-closing.");
             throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR / Phiên điểm danh đã hết hạn.");
         }
@@ -102,14 +102,13 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         }
 
         String recordId = "REC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String checkedAt = LocalDateTime.now().format(FORMATTER);
 
         AttendanceRecord record = AttendanceRecord.builder()
                 .recordId(recordId)
                 .sessionId(session.getSessionId())
                 .studentId(student.getUserId())
                 .status("PRESENT")
-                .checkedAt(checkedAt)
+                .checkedAt(LocalDateTime.now())
                 .build();
 
         attendanceRecordRepository.save(record);
@@ -131,11 +130,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         List<AttendanceRecord> records = attendanceRecordRepository.findBySessionId(sessionId);
         return records.stream()
                 .map(record -> {
-                    User student = null;
-                    try {
-                        student = userRepository.findById(record.getStudentId()).orElse(null);
-                    } catch (IOException ignored) {
-                    }
+                    User student = userRepository.findById(record.getStudentId()).orElse(null);
                     return AttendanceRecordResponse.builder()
                             .recordId(record.getRecordId())
                             .sessionId(record.getSessionId())
@@ -161,13 +156,14 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         csv.append("Record ID,Session ID,Student ID,FAP Code,Full Name,Status,Checked At\n");
 
         for (AttendanceRecordResponse rec : records) {
+            String checkedAtStr = rec.getCheckedAt() != null ? rec.getCheckedAt().format(FORMATTER) : "";
             csv.append(escapeCsv(rec.getRecordId())).append(",")
                     .append(escapeCsv(rec.getSessionId())).append(",")
                     .append(escapeCsv(rec.getStudentId())).append(",")
                     .append(escapeCsv(rec.getStudentFapCode())).append(",")
                     .append(escapeCsv(rec.getStudentName())).append(",")
                     .append(escapeCsv(rec.getStatus())).append(",")
-                    .append(escapeCsv(rec.getCheckedAt())).append("\n");
+                    .append(escapeCsv(checkedAtStr)).append("\n");
         }
 
         syncLogService.logSync("EXPORT_CSV", "SUCCESS", "Exported CSV for session " + sessionId);
@@ -175,22 +171,11 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         return out.toByteArray();
     }
 
-    private boolean isExpired(String expiredAtStr) {
-        if (expiredAtStr == null || expiredAtStr.trim().isEmpty()) {
+    private boolean isExpired(LocalDateTime expiredAt) {
+        if (expiredAt == null) {
             return false;
         }
-        try {
-            LocalDateTime expiredAt;
-            String trimmed = expiredAtStr.trim();
-            if (trimmed.contains("T")) {
-                expiredAt = LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } else {
-                expiredAt = LocalDateTime.parse(trimmed, FORMATTER);
-            }
-            return LocalDateTime.now().isAfter(expiredAt);
-        } catch (DateTimeParseException e) {
-            return false;
-        }
+        return LocalDateTime.now().isAfter(expiredAt);
     }
 
     private String escapeCsv(String value) {

@@ -28,14 +28,13 @@ public class SyncLogServiceImpl implements SyncLogService {
     @Override
     public void logSync(String action, String status, String details) throws IOException {
         String logId = "LOG-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String now = LocalDateTime.now().format(FORMATTER);
 
         GoogleSheetSyncLog log = GoogleSheetSyncLog.builder()
                 .logId(logId)
                 .action(action != null ? action : "N/A")
                 .status(status != null ? status : "UNKNOWN")
                 .details(details != null ? details : "")
-                .syncedAt(now)
+                .syncedAt(LocalDateTime.now())
                 .build();
 
         syncLogRepository.save(log);

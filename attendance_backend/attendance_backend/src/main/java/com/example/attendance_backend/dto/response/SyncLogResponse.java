@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -15,5 +17,5 @@ public class SyncLogResponse {
     private String action;
     private String status;
     private String details;
-    private String syncedAt;
+    private LocalDateTime syncedAt;
 }

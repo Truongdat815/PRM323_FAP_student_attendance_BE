@@ -45,9 +45,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(jwtAuthenticationEntryPoint))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints: Xác thực và Swagger UI API Docs
+                        // Public endpoints: Xác thực, import Excel và Swagger UI API Docs
                         .requestMatchers(
                                 "/api/auth/**",
+                                "/api/users/import-excel",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"

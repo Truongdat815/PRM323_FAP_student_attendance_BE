@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -143,7 +144,7 @@ class EnrollmentServiceTest {
                 .enrollmentId("ENR-001")
                 .courseId("CRS-001")
                 .studentId("USR-STU1")
-                .enrolledAt("2026-09-16T00:00:00Z")
+                .enrolledAt(LocalDateTime.of(2026, 9, 16, 0, 0, 0))
                 .build();
 
         when(userRepository.findByUsername("student1")).thenReturn(Optional.of(student));

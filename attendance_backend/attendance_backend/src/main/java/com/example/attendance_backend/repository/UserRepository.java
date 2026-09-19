@@ -1,27 +1,23 @@
 package com.example.attendance_backend.repository;
 
 import com.example.attendance_backend.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 
-/**
- * Repository interface thao tác truy vấn dữ liệu người dùng trên sheet USERS.
- */
-public interface UserRepository {
+@Repository
+public interface UserRepository extends JpaRepository<User, String> {
 
-    User save(User user) throws IOException;
+    Optional<User> findByUsername(String username);
 
-    Optional<User> findById(String userId) throws IOException;
+    Optional<User> findByMemberCode(String memberCode);
 
-    Optional<User> findByUsername(String username) throws IOException;
+    Optional<User> findByFapCode(String fapCode);
 
-    Optional<User> findByFapCode(String fapCode) throws IOException;
+    Optional<User> findByEmail(String email);
 
-    boolean existsByUsername(String username) throws IOException;
+    boolean existsByUsername(String username);
 
-    boolean existsByFapCode(String fapCode) throws IOException;
-
-    List<User> findAll() throws IOException;
+    boolean existsByFapCode(String fapCode);
 }

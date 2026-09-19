@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -76,7 +77,7 @@ class AttendanceRecordServiceTest {
                 .courseId("CRS-101")
                 .qrCodeSecret("SECRET123")
                 .status("ACTIVE")
-                .expiredAt("2099-12-31 23:59:59")
+                .expiredAt(LocalDateTime.of(2099, 12, 31, 23, 59, 59))
                 .build();
 
         when(userRepository.findByUsername("student1")).thenReturn(Optional.of(student));
@@ -111,7 +112,7 @@ class AttendanceRecordServiceTest {
                 .courseId("CRS-101")
                 .qrCodeSecret("SECRET123")
                 .status("ACTIVE")
-                .expiredAt("2099-12-31 23:59:59")
+                .expiredAt(LocalDateTime.of(2099, 12, 31, 23, 59, 59))
                 .build();
 
         when(userRepository.findByUsername("student1")).thenReturn(Optional.of(student));
@@ -141,7 +142,7 @@ class AttendanceRecordServiceTest {
                 .courseId("CRS-101")
                 .qrCodeSecret("SECRET123")
                 .status("ACTIVE")
-                .expiredAt("2099-12-31 23:59:59")
+                .expiredAt(LocalDateTime.of(2099, 12, 31, 23, 59, 59))
                 .build();
 
         when(userRepository.findByUsername("student1")).thenReturn(Optional.of(student));

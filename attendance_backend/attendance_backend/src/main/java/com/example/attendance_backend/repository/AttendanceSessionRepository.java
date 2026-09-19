@@ -1,22 +1,16 @@
 package com.example.attendance_backend.repository;
 
 import com.example.attendance_backend.model.AttendanceSession;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
-public interface AttendanceSessionRepository {
+@Repository
+public interface AttendanceSessionRepository extends JpaRepository<AttendanceSession, String> {
 
-    AttendanceSession save(AttendanceSession session) throws IOException;
+    List<AttendanceSession> findByCourseId(String courseId);
 
-    Optional<AttendanceSession> findById(String sessionId) throws IOException;
-
-    List<AttendanceSession> findByCourseId(String courseId) throws IOException;
-
-    List<AttendanceSession> findAll() throws IOException;
-
-    boolean update(String sessionId, AttendanceSession session) throws IOException;
-
-    boolean delete(String sessionId) throws IOException;
+    Optional<AttendanceSession> findByQrCodeSecret(String qrCodeSecret);
 }

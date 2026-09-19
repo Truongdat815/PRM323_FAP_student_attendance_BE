@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -68,7 +69,7 @@ class CourseServiceTest {
                 .className("SE1701")
                 .semester("FA24")
                 .lecturerId("USR-LEC1")
-                .createdAt("2026-09-16T00:00:00Z")
+                .createdAt(LocalDateTime.of(2026, 9, 16, 0, 0, 0))
                 .build();
     }
 
@@ -148,14 +149,14 @@ class CourseServiceTest {
 
         when(courseRepository.findById("CRS-001")).thenReturn(Optional.of(sampleCourse));
         when(userRepository.findByUsername("teacher1")).thenReturn(Optional.of(lecturer));
-        when(courseRepository.update(eq("CRS-001"), any(Course.class))).thenReturn(true);
+        when(courseRepository.save(any(Course.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         CourseResponse response = courseService.updateCourse("CRS-001", updateRequest, "teacher1");
 
         assertNotNull(response);
         assertEquals("PRM392-UPDATED", response.getSubjectCode());
         assertEquals("SE1701-NEW", response.getClassName());
-        verify(courseRepository, times(1)).update(eq("CRS-001"), any(Course.class));
+        verify(courseRepository, times(1)).save(any(Course.class));
     }
 
     @Test
@@ -171,17 +172,16 @@ class CourseServiceTest {
 
         AppException ex = assertThrows(AppException.class, () -> courseService.updateCourse("CRS-001", updateRequest, "teacher2"));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
-        verify(courseRepository, never()).update(anyString(), any());
+        verify(courseRepository, never()).save(any());
     }
 
     @Test
     void testDeleteCourseSuccess() throws IOException {
         when(courseRepository.findById("CRS-001")).thenReturn(Optional.of(sampleCourse));
         when(userRepository.findByUsername("teacher1")).thenReturn(Optional.of(lecturer));
-        when(courseRepository.delete("CRS-001")).thenReturn(true);
 
         assertDoesNotThrow(() -> courseService.deleteCourse("CRS-001", "teacher1"));
-        verify(courseRepository, times(1)).delete("CRS-001");
+        verify(courseRepository, times(1)).delete(any(Course.class));
     }
 
     @Test
@@ -191,6 +191,6 @@ class CourseServiceTest {
 
         AppException ex = assertThrows(AppException.class, () -> courseService.deleteCourse("CRS-001", "teacher2"));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
-        verify(courseRepository, never()).delete(anyString());
+        verify(courseRepository, never()).delete(any(Course.class));
     }
 }

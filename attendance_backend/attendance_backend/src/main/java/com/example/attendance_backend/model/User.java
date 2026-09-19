@@ -1,81 +1,52 @@
 package com.example.attendance_backend.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
+import lombok.*;
 
-import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * Thực thể User ánh xạ tương ứng với dòng dữ liệu trong sheet USERS.
+ * Thực thể User lưu trữ thông tin người dùng trong hệ thống.
  */
+@Entity
+@Table(name = "users")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
 
+    @Id
+    @Column(name = "user_id", nullable = false, unique = true)
     private String userId;
+
+    @Column(name = "username", unique = true)
     private String username;
+
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    @Column(name = "fap_code")
     private String fapCode;
+
+    @Column(name = "full_name")
     private String fullName;
+
+    @Column(name = "email")
     private String email;
+
+    @Column(name = "role_id")
     private String roleId;
-    private String createdAt;
 
-    /**
-     * Chuyển đổi đối tượng User thành dòng dữ liệu ghi vào Google Sheet USERS.
-     */
-    public List<Object> toRow() {
-        return Arrays.asList(
-                userId != null ? userId : "",
-                username != null ? username : "",
-                passwordHash != null ? passwordHash : "",
-                fapCode != null ? fapCode : "",
-                fullName != null ? fullName : "",
-                email != null ? email : "",
-                roleId != null ? roleId : "",
-                createdAt != null ? createdAt : ""
-        );
-    }
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "role_id", insertable = false, updatable = false)
+    private Role role;
 
-    /**
-     * Ánh xạ một dòng dữ liệu từ Google Sheet USERS thành đối tượng User.
-     */
-    public static User fromRow(List<Object> row) {
-        if (row == null || row.isEmpty()) {
-            return null;
-        }
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
-        String userId = getCellValue(row, 0);
-        String username = getCellValue(row, 1);
-        String passwordHash = getCellValue(row, 2);
-        String fapCode = getCellValue(row, 3);
-        String fullName = getCellValue(row, 4);
-        String email = getCellValue(row, 5);
-        String roleId = getCellValue(row, 6);
-        String createdAt = getCellValue(row, 7);
-
-        return User.builder()
-                .userId(userId)
-                .username(username)
-                .passwordHash(passwordHash)
-                .fapCode(fapCode)
-                .fullName(fullName)
-                .email(email)
-                .roleId(roleId)
-                .createdAt(createdAt)
-                .build();
-    }
-
-    private static String getCellValue(List<Object> row, int index) {
-        if (index < row.size() && row.get(index) != null) {
-            return row.get(index).toString().trim();
-        }
-        return "";
-    }
+    @Column(name = "member_code")
+    private String memberCode;
 }

@@ -1,70 +1,43 @@
 package com.example.attendance_backend.model;
 
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Arrays;
-import java.util.List;
+import java.time.LocalDateTime;
 
+@Entity
+@Table(name = "attendance_sessions")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AttendanceSession {
 
+    @Id
+    @Column(name = "session_id", nullable = false)
     private String sessionId;
+
+    @Column(name = "course_id")
     private String courseId;
+
+    @Column(name = "slot_number")
     private Integer slotNumber;
+
+    @Column(name = "qr_code_secret")
     private String qrCodeSecret;
+
+    @Column(name = "room_network_ip")
     private String roomNetworkIp;
-    private String expiredAt;
+
+    @Column(name = "expired_at")
+    private LocalDateTime expiredAt;
+
+    @Column(name = "status")
     private String status;
-    private String createdAt;
 
-    public List<Object> toRow() {
-        return Arrays.asList(
-                sessionId != null ? sessionId : "",
-                courseId != null ? courseId : "",
-                slotNumber != null ? slotNumber.toString() : "",
-                qrCodeSecret != null ? qrCodeSecret : "",
-                roomNetworkIp != null ? roomNetworkIp : "",
-                expiredAt != null ? expiredAt : "",
-                status != null ? status : "",
-                createdAt != null ? createdAt : ""
-        );
-    }
-
-    public static AttendanceSession fromRow(List<Object> row) {
-        if (row == null || row.isEmpty()) {
-            return null;
-        }
-        Integer slot = null;
-        String slotStr = getCellValue(row, 2);
-        if (!slotStr.isEmpty()) {
-            try {
-                slot = Integer.parseInt(slotStr);
-            } catch (NumberFormatException e) {
-                slot = null;
-            }
-        }
-        return AttendanceSession.builder()
-                .sessionId(getCellValue(row, 0))
-                .courseId(getCellValue(row, 1))
-                .slotNumber(slot)
-                .qrCodeSecret(getCellValue(row, 3))
-                .roomNetworkIp(getCellValue(row, 4))
-                .expiredAt(getCellValue(row, 5))
-                .status(getCellValue(row, 6))
-                .createdAt(getCellValue(row, 7))
-                .build();
-    }
-
-    private static String getCellValue(List<Object> row, int index) {
-        if (index < row.size() && row.get(index) != null) {
-            return row.get(index).toString().trim();
-        }
-        return "";
-    }
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 }
