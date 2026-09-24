@@ -415,6 +415,7 @@ curl -X DELETE http://localhost:8080/api/courses/c1d2e3f4-a5b6-7890-cdef-1234567
 | `subjectCode`  | `string` | ❌       | Mã môn học (tìm kiếm tương đối, VD: `PRM392`)       |
 | `semester`     | `string` | ❌       | Học kỳ (tìm kiếm tương đối, VD: `FA24`)             |
 | `lecturerName` | `string` | ❌       | Họ tên hoặc username giảng viên (tìm kiếm tương đối)|
+| `lecturerId`   | `string` | ❌       | ID giảng viên (cho phép lọc cục bộ các lớp của GV)  |
 
 **Response** (`200 OK`):
 
@@ -445,6 +446,10 @@ curl -X GET "http://localhost:8080/api/courses/search?subjectCode=PRM392&lecture
 
 # Tìm kiếm theo lớp và học kỳ
 curl -X GET "http://localhost:8080/api/courses/search?className=SE1701&semester=FA24" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+
+# Giảng viên tìm kiếm các lớp do chính mình phụ trách
+curl -X GET "http://localhost:8080/api/courses/search?lecturerId=USR-LEC1" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
 ```
 
@@ -509,11 +514,14 @@ curl -X POST http://localhost:8080/api/courses/register \
 | **URL**     | `/api/courses/my-courses`                             |
 | **Auth**    | ✅ Bearer Token — `STUDENT`, `ADMIN`                  |
 
-**Query Parameters**:
+**Query Parameters** *(Tùy chọn lọc nâng cao)*:
 
-| Param       | Type     | Required | Mô tả                                                                    |
-|-------------|----------|----------|---------------------------------------------------------------------------|
-| `studentId` | `string` | ❌       | Mã học sinh (`userId`, `username`, hoặc `fapCode`). Nếu không truyền = lấy từ user đang đăng nhập |
+| Param          | Type     | Required | Mô tả                                                                             |
+|----------------|----------|----------|-----------------------------------------------------------------------------------|
+| `studentId`    | `string` | ❌       | Mã học sinh (`userId`, `username`, `fapCode`). Nếu bỏ trống = lấy từ user login   |
+| `subjectCode`  | `string` | ❌       | Lọc theo mã môn học (tìm tương đối, VD: `PRM392`)                                  |
+| `semester`     | `string` | ❌       | Lọc theo học kỳ (VD: `FA24`, `SP25`)                                              |
+| `lecturerName` | `string` | ❌       | Lọc theo họ tên giảng viên (tìm tương đối)                                        |
 
 **Response** (`200 OK`):
 
@@ -547,16 +555,65 @@ curl -X POST http://localhost:8080/api/courses/register \
 
 **Ví dụ Request**:
 ```bash
-# Lấy danh sách khóa học của chính mình (dựa vào JWT Token)
+# Lấy danh sách khóa học của chính mình
 curl -X GET http://localhost:8080/api/courses/my-courses \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
 
-# Lấy danh sách khóa học của một học sinh cụ thể (admin hoặc truyền studentId)
-curl -X GET "http://localhost:8080/api/courses/my-courses?studentId=SE192964" \
+# Lọc theo môn học và học kỳ
+curl -X GET "http://localhost:8080/api/courses/my-courses?subjectCode=PRM392&semester=FA24" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
 ```
 
-> 💡 **Lưu ý**: Mỗi khóa học trả về đều kèm theo trường `lecturerName` chứa họ tên giảng viên phụ trách.
+---
+
+### 2.9. Import danh sách sinh viên vào khóa học qua Excel
+
+| Thuộc tính   | Giá trị                                         |
+|-------------|-------------------------------------------------|
+| **Tên**     | Import Students to Course                       |
+| **Method**  | `POST`                                          |
+| **URL**     | `/api/courses/{courseId}/import-students`       |
+| **Auth**    | ✅ Bearer Token — `LECTURER`, `ADMIN`           |
+
+**Path Parameters**:
+
+| Param      | Type     | Mô tả                |
+|------------|----------|-----------------------|
+| `courseId` | `string` | ID của khóa học       |
+
+**Request Body** (`multipart/form-data`):
+
+| Field  | Type            | Required | Mô tả                                               |
+|--------|-----------------|----------|------------------------------------------------------|
+| `file` | `MultipartFile` | ✅       | File Excel (.xlsx hoặc .xls) chứa danh sách sinh viên |
+
+> 💡 **Quy cách file Excel**:
+> Hệ thống tự động nhận diện các cột theo tiêu đề: `RollNumber` (hoặc `FAPCode`, `MSSV`), `Email`, `MemberCode`, `FullName`.
+> Với mỗi sinh viên, nếu chưa có tài khoản sẽ tự động tạo tài khoản mặc định (mật khẩu mặc định `A123456`) và ghi danh vào lớp học phần.
+
+**Response** (`201 Created`):
+
+```json
+{
+  "success": true,
+  "message": "Import danh sách sinh viên vào khóa học thành công",
+  "data": {
+    "courseId": "CRS-001",
+    "totalRows": 35,
+    "successCount": 33,
+    "skippedCount": 2,
+    "errors": []
+  },
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
+**Ví dụ Request**:
+```bash
+curl -X POST http://localhost:8080/api/courses/CRS-001/import-students \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -F "file=@danh_sach_sinh_vien.xlsx"
+```
 
 ---
 
@@ -737,6 +794,7 @@ curl -X GET http://localhost:8080/api/enrollments/course/c1d2e3f4-a5b6-7890-cdef
     "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
     "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
     "slotNumber": 1,
+    "sessionCode": "849201",
     "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef",
     "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6...",
     "roomNetworkIp": "192.168.1.0",
@@ -748,7 +806,9 @@ curl -X GET http://localhost:8080/api/enrollments/course/c1d2e3f4-a5b6-7890-cdef
 }
 ```
 
-> 💡 **Lưu ý**: `qrCodeBase64` là hình ảnh QR code mã hóa Base64 (PNG). Frontend hiển thị bằng:
+> 💡 **Lưu ý**:
+> - `sessionCode`: Mã PIN 6 chữ số ngẫu nhiên cho phép sinh viên nhập thủ công thay vì quét QR.
+> - `qrCodeBase64` là hình ảnh QR code mã hóa Base64 (PNG). Frontend hiển thị bằng:
 > ```html
 > <img src="data:image/png;base64,{qrCodeBase64}" />
 > ```
@@ -793,6 +853,7 @@ curl -X POST http://localhost:8080/api/sessions \
     "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
     "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
     "slotNumber": 1,
+    "sessionCode": "849201",
     "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef",
     "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6...",
     "roomNetworkIp": "192.168.1.0",
@@ -908,29 +969,31 @@ curl -X PUT http://localhost:8080/api/sessions/s1t2u3v4-w5x6-7890-yzab-cdef12345
 
 ---
 
-### 5.1. Sinh viên điểm danh qua QR
+### 5.1. Sinh viên điểm danh qua QR hoặc mã PIN (Session Code)
 
 | Thuộc tính   | Giá trị                              |
 |-------------|---------------------------------------|
-| **Tên**     | Check In (QR Attendance)              |
+| **Tên**     | Check In (QR Attendance / PIN Code)   |
 | **Method**  | `POST`                                |
 | **URL**     | `/api/attendance/check-in`            |
 | **Auth**    | ✅ Bearer Token — `STUDENT`, `ADMIN`  |
 
 **Request Body** (`application/json`):
 
-| Field          | Type     | Required | Mô tả                                      |
-|---------------|----------|----------|---------------------------------------------|
-| `sessionId`    | `string` | ✅       | ID buổi điểm danh                           |
-| `qrCodeSecret` | `string` | ✅       | Mã bí mật QR Code (quét được từ QR)         |
-| `clientIp`     | `string` | ❌       | IP thiết bị (hệ thống tự lấy nếu bỏ trống) |
+| Field          | Type     | Required | Mô tả                                                                    |
+|---------------|----------|----------|---------------------------------------------------------------------------|
+| `sessionId`    | `string` | ⚠️       | ID buổi điểm danh (bắt buộc nếu điểm danh qua QR; tùy chọn nếu dùng PIN)  |
+| `qrCodeSecret` | `string` | ⚠️       | Mã bí mật QR Code (bắt buộc nếu quét QR)                                  |
+| `sessionCode`  | `string` | ⚠️       | Mã PIN 6 chữ số buổi học (thay thế cho QR; tìm tự động session đang OPEN)|
+| `clientIp`     | `string` | ❌       | IP thiết bị (nếu bỏ trống hệ thống tự lấy qua header `X-Forwarded-For`)   |
 
-> ⚠️ **Hệ thống kiểm tra 5 điều kiện nghiệp vụ**:
-> 1. Session tồn tại và đang `OPEN`
-> 2. QR code secret khớp
-> 3. Chưa hết hạn (`expiredAt`)
-> 4. Sinh viên đã đăng ký khóa học (enrollment)
-> 5. Chưa điểm danh trùng (chống điểm danh lại)
+> ⚠️ **Hệ thống kiểm tra 6 điều kiện nghiệp vụ**:
+> 1. Session tồn tại và đang `OPEN` (theo `sessionId` hoặc `sessionCode`)
+> 2. QR code secret khớp (nếu quét QR) HOẶC sessionCode 6 chữ số hợp lệ (nếu nhập PIN)
+> 3. Buổi học chưa hết hạn (`expiredAt`)
+> 4. Sinh viên đã đăng ký khóa học (`enrollment`)
+> 5. Chưa điểm danh trùng (chống spam / điểm danh lặp)
+> 6. **Xác thực Wi-Fi phòng học**: Nếu buổi học cấu hình `roomNetworkIp`, địa chỉ IP của sinh viên phải cùng mạng (cùng IP hoặc cùng subnet `/24`, ví dụ `192.168.1.*`)
 
 **Response** (`201 Created`):
 
@@ -951,7 +1014,7 @@ curl -X PUT http://localhost:8080/api/sessions/s1t2u3v4-w5x6-7890-yzab-cdef12345
 }
 ```
 
-**Ví dụ Request**:
+**Ví dụ Request 1 (Quét mã QR)**:
 ```bash
 curl -X POST http://localhost:8080/api/attendance/check-in \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
@@ -959,6 +1022,16 @@ curl -X POST http://localhost:8080/api/attendance/check-in \
   -d '{
     "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
     "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef"
+  }'
+```
+
+**Ví dụ Request 2 (Nhập mã PIN 6 số)**:
+```bash
+curl -X POST http://localhost:8080/api/attendance/check-in \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionCode": "849201"
   }'
 ```
 
@@ -1053,6 +1126,88 @@ curl -X GET http://localhost:8080/api/attendance/export/s1t2u3v4-w5x6-7890-yzab-
 
 ---
 
+### 5.4. Lịch sử điểm danh của cá nhân sinh viên
+
+| Thuộc tính   | Giá trị                                      |
+|-------------|-----------------------------------------------|
+| **Tên**     | Get My Attendance History                     |
+| **Method**  | `GET`                                         |
+| **URL**     | `/api/attendance/my-history`                  |
+| **Auth**    | ✅ Bearer Token — `STUDENT`, `ADMIN`          |
+
+**Query Parameters**:
+
+| Param      | Type     | Required | Mô tả                                               |
+|------------|----------|----------|------------------------------------------------------|
+| `courseId` | `string` | ❌       | Lọc theo ID khóa học (nếu bỏ trống = lấy tất cả khóa)|
+
+**Response** (`200 OK`):
+
+```json
+{
+  "success": true,
+  "message": "Lấy lịch sử điểm danh của bạn thành công",
+  "data": [
+    {
+      "recordId": "r1s2t3u4-v5w6-7890-xyza-bcdef1234567",
+      "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
+      "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
+      "subjectCode": "PRM392",
+      "className": "SE1701",
+      "slotNumber": 1,
+      "status": "PRESENT",
+      "checkedAt": "2026-09-23T09:45:00"
+    }
+  ],
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
+**Ví dụ Request**:
+```bash
+# Xem tất cả
+curl -X GET http://localhost:8080/api/attendance/my-history \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+
+# Lọc theo khóa học
+curl -X GET "http://localhost:8080/api/attendance/my-history?courseId=c1d2e3f4-a5b6-7890-cdef-1234567890ab" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+---
+
+### 5.5. Xuất danh sách điểm danh ra file Excel (.xlsx)
+
+| Thuộc tính   | Giá trị                                      |
+|-------------|-----------------------------------------------|
+| **Tên**     | Export Attendance to Excel                    |
+| **Method**  | `GET`                                         |
+| **URL**     | `/api/attendance/export-excel/{sessionId}`    |
+| **Auth**    | ✅ Bearer Token — `LECTURER`, `ADMIN`         |
+
+> 💡 **Đặc điểm nổi bật**: Báo cáo tổng hợp **100% sinh viên** có trong danh sách lớp (`enrollment`). Sinh viên đã quét mã/nhập PIN ghi nhận trạng thái `PRESENT` kèm thời gian điểm danh; sinh viên không điểm danh tự động ghi nhận trạng thái `ABSENT`.
+
+**Path Parameters**:
+
+| Param       | Type     | Mô tả                |
+|------------|----------|-----------------------|
+| `sessionId`| `string` | ID buổi điểm danh     |
+
+**Response** (`200 OK`):
+
+- **Content-Type**: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- **Content-Disposition**: `attachment; filename="attendance_session_{sessionId}.xlsx"`
+- **Body**: File Excel binary (.xlsx) với các cột: No, Student Code, Full Name, Email, Status, Checked At.
+
+**Ví dụ Request**:
+```bash
+curl -X GET http://localhost:8080/api/attendance/export-excel/s1t2u3v4-w5x6-7890-yzab-cdef12345678 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -o attendance_session_report.xlsx
+```
+
+---
+
 ## 6. 👤 User Controller
 
 **Base path**: `/api/users`
@@ -1125,6 +1280,99 @@ curl -X POST http://localhost:8080/api/users/import-excel \
 
 ---
 
+### 6.2. Cập nhật thông tin cá nhân
+
+| Thuộc tính   | Giá trị                              |
+|-------------|---------------------------------------|
+| **Tên**     | Update Profile                        |
+| **Method**  | `PUT`                                 |
+| **URL**     | `/api/users/profile`                  |
+| **Auth**    | ✅ Bearer Token (Tất cả role)         |
+
+**Request Body** (`application/json`):
+
+| Field      | Type     | Required | Mô tả                                             |
+|------------|----------|----------|----------------------------------------------------|
+| `fullName` | `string` | ❌       | Họ và tên mới                                      |
+| `email`    | `string` | ❌       | Email mới (hệ thống kiểm tra trùng lặp email khác) |
+
+> 💡 **Đồng bộ**: Khi cập nhật thông tin thành công, hệ thống tự động đồng bộ thay đổi sang tab `USERS` trên Google Sheets.
+
+**Response** (`200 OK`):
+
+```json
+{
+  "success": true,
+  "message": "Cập nhật thông tin thành công",
+  "data": {
+    "userId": "u1v2w3x4-y5z6-7890-abcd-ef1234567890",
+    "username": "SE192964",
+    "fapCode": "SE192964",
+    "fullName": "Ngô Hoàng Trường Đạt (Updated)",
+    "email": "datnhse192964_new@fpt.edu.vn",
+    "roleId": "STUDENT",
+    "createdAt": "2026-09-23T09:00:00",
+    "memberCode": "HE192964"
+  },
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
+**Ví dụ Request**:
+```bash
+curl -X PUT http://localhost:8080/api/users/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "Ngô Hoàng Trường Đạt (Updated)",
+    "email": "datnhse192964_new@fpt.edu.vn"
+  }'
+```
+
+---
+
+### 6.3. Đổi mật khẩu
+
+| Thuộc tính   | Giá trị                              |
+|-------------|---------------------------------------|
+| **Tên**     | Change Password                       |
+| **Method**  | `PUT`                                 |
+| **URL**     | `/api/users/change-password`          |
+| **Auth**    | ✅ Bearer Token (Tất cả role)         |
+
+**Request Body** (`application/json`):
+
+| Field         | Type     | Required | Mô tả                                      |
+|---------------|----------|----------|---------------------------------------------|
+| `oldPassword` | `string` | ✅       | Mật khẩu hiện tại (kiểm tra khớp hash BCrypt)|
+| `newPassword` | `string` | ✅       | Mật khẩu mới (tối thiểu 6 ký tự)            |
+
+> 💡 **Đồng bộ**: Mật khẩu mới được mã hóa BCrypt lưu vào Database và đồng bộ sang cột Password trên tab `USERS` Google Sheets.
+
+**Response** (`200 OK`):
+
+```json
+{
+  "success": true,
+  "message": "Đổi mật khẩu thành công",
+  "data": null,
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
+**Ví dụ Request**:
+```bash
+curl -X PUT http://localhost:8080/api/users/change-password \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "oldPassword": "oldPassword123",
+    "newPassword": "newSecretPassword456"
+  }'
+```
+
+---
+
 ## 7. 📋 Sync Log Controller
 
 **Base path**: `/api/sync-logs`
@@ -1178,27 +1426,35 @@ curl -X GET http://localhost:8080/api/sync-logs \
 
 ## 📊 Tổng hợp tất cả Endpoints
 
-| #  | Method   | URL                                      | Auth         | Role                 | Mô tả                              |
-|----|----------|------------------------------------------|-------------|----------------------|-------------------------------------|
-| 1  | `POST`   | `/api/auth/register`                     | ❌ Public   | —                    | Đăng ký tài khoản                   |
-| 2  | `POST`   | `/api/auth/login`                        | ❌ Public   | —                    | Đăng nhập, lấy JWT Token            |
-| 3  | `GET`    | `/api/courses`                           | ✅ Token    | Tất cả               | Lấy danh sách khóa học              |
-| 4  | `GET`    | `/api/courses/{id}`                      | ✅ Token    | Tất cả               | Xem chi tiết khóa học               |
-| 5  | `POST`   | `/api/courses`                           | ✅ Token    | LECTURER, ADMIN      | Tạo khóa học mới                    |
-| 6  | `PUT`    | `/api/courses/{id}`                      | ✅ Token    | LECTURER, ADMIN      | Cập nhật khóa học                   |
-| 7  | `DELETE` | `/api/courses/{id}`                      | ✅ Token    | LECTURER, ADMIN      | Xóa khóa học                        |
-| 8  | `POST`   | `/api/enrollments`                       | ✅ Token    | STUDENT, ADMIN       | Đăng ký tham gia khóa học           |
-| 9  | `GET`    | `/api/enrollments/my-courses`            | ✅ Token    | STUDENT, ADMIN       | Xem khóa học đã đăng ký             |
-| 10 | `GET`    | `/api/enrollments/course/{courseId}`      | ✅ Token    | LECTURER, ADMIN      | DS sinh viên trong lớp              |
-| 11 | `POST`   | `/api/sessions`                          | ✅ Token    | LECTURER, ADMIN      | Tạo buổi điểm danh (sinh QR)       |
-| 12 | `GET`    | `/api/sessions/{sessionId}`              | ✅ Token    | Tất cả               | Chi tiết buổi điểm danh             |
-| 13 | `GET`    | `/api/sessions/course/{courseId}`         | ✅ Token    | Tất cả               | DS buổi điểm danh theo khóa học     |
-| 14 | `PUT`    | `/api/sessions/{sessionId}/close`        | ✅ Token    | LECTURER, ADMIN      | Đóng buổi điểm danh                |
-| 15 | `POST`   | `/api/attendance/check-in`               | ✅ Token    | STUDENT, ADMIN       | Điểm danh qua QR                    |
-| 16 | `GET`    | `/api/attendance/session/{sessionId}`    | ✅ Token    | LECTURER, ADMIN      | Lịch sử điểm danh buổi học          |
-| 17 | `GET`    | `/api/attendance/export/{sessionId}`     | ✅ Token    | LECTURER, ADMIN      | Xuất CSV điểm danh                  |
-| 18 | `POST`   | `/api/users/import-excel`                | ❌ Public   | —                    | Import user từ Excel                |
-| 19 | `GET`    | `/api/sync-logs`                         | ✅ Token    | ADMIN, LECTURER      | Xem nhật ký đồng bộ                 |
+| #  | Method   | URL                                            | Auth         | Role                 | Mô tả                                                |
+|----|----------|------------------------------------------------|-------------|----------------------|-------------------------------------------------------|
+| 1  | `POST`   | `/api/auth/register`                           | ❌ Public   | —                    | Đăng ký tài khoản                                     |
+| 2  | `POST`   | `/api/auth/login`                              | ❌ Public   | —                    | Đăng nhập, lấy JWT Token                              |
+| 3  | `GET`    | `/api/courses`                                 | ✅ Token    | Tất cả               | Lấy danh sách khóa học (lọc lecturerId)               |
+| 4  | `GET`    | `/api/courses/{id}`                            | ✅ Token    | Tất cả               | Xem chi tiết khóa học                                 |
+| 5  | `POST`   | `/api/courses`                                 | ✅ Token    | LECTURER, ADMIN      | Tạo khóa học mới                                      |
+| 6  | `PUT`    | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN      | Cập nhật khóa học                                     |
+| 7  | `DELETE` | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN      | Xóa khóa học                                          |
+| 8  | `GET`    | `/api/courses/search`                          | ✅ Token    | Tất cả               | Tìm kiếm khóa học nâng cao (subject, class, sem, lec) |
+| 9  | `GET`    | `/api/courses/my-courses`                      | ✅ Token    | STUDENT, ADMIN       | Xem khóa học đã tham gia (hỗ trợ lọc semester/subject)|
+| 10 | `POST`   | `/api/courses/{courseId}/enroll`               | ✅ Token    | STUDENT, ADMIN       | Sinh viên đăng ký tham gia khóa học                   |
+| 11 | `POST`   | `/api/courses/{courseId}/import-students`      | ✅ Token    | LECTURER, ADMIN      | Import danh sách sinh viên vào khóa học bằng Excel    |
+| 12 | `POST`   | `/api/enrollments`                             | ✅ Token    | STUDENT, ADMIN       | Đăng ký tham gia khóa học (EnrollmentController)      |
+| 13 | `GET`    | `/api/enrollments/my-courses`                  | ✅ Token    | STUDENT, ADMIN       | Xem khóa học đã đăng ký (EnrollmentController)        |
+| 14 | `GET`    | `/api/enrollments/course/{courseId}`            | ✅ Token    | LECTURER, ADMIN      | DS sinh viên trong lớp                                |
+| 15 | `POST`   | `/api/sessions`                                | ✅ Token    | LECTURER, ADMIN      | Tạo buổi điểm danh (sinh QR & mã PIN 6 số)            |
+| 16 | `GET`    | `/api/sessions/{sessionId}`                    | ✅ Token    | Tất cả               | Chi tiết buổi điểm danh                               |
+| 17 | `GET`    | `/api/sessions/course/{courseId}`               | ✅ Token    | Tất cả               | DS buổi điểm danh theo khóa học                       |
+| 18 | `PUT`    | `/api/sessions/{sessionId}/close`              | ✅ Token    | LECTURER, ADMIN      | Đóng buổi điểm danh                                  |
+| 19 | `POST`   | `/api/attendance/check-in`                     | ✅ Token    | STUDENT, ADMIN       | Điểm danh qua QR / mã PIN / kiểm tra Wi-Fi            |
+| 20 | `GET`    | `/api/attendance/session/{sessionId}`          | ✅ Token    | LECTURER, ADMIN      | Lịch sử điểm danh buổi học                            |
+| 21 | `GET`    | `/api/attendance/my-history`                   | ✅ Token    | STUDENT, ADMIN       | Lịch sử điểm danh cá nhân sinh viên                   |
+| 22 | `GET`    | `/api/attendance/export/{sessionId}`           | ✅ Token    | LECTURER, ADMIN      | Xuất CSV điểm danh                                    |
+| 23 | `GET`    | `/api/attendance/export-excel/{sessionId}`     | ✅ Token    | LECTURER, ADMIN      | Xuất Excel 100% sinh viên (PRESENT / ABSENT)          |
+| 24 | `POST`   | `/api/users/import-excel`                      | ❌ Public   | —                    | Import danh sách người dùng từ Excel                  |
+| 25 | `PUT`    | `/api/users/profile`                           | ✅ Token    | Tất cả               | Cập nhật thông tin cá nhân (sync Sheets)              |
+| 26 | `PUT`    | `/api/users/change-password`                   | ✅ Token    | Tất cả               | Đổi mật khẩu tài khoản (sync Sheets)                  |
+| 27 | `GET`    | `/api/sync-logs`                               | ✅ Token    | ADMIN, LECTURER      | Xem nhật ký đồng bộ Google Sheets                     |
 
 ---
 

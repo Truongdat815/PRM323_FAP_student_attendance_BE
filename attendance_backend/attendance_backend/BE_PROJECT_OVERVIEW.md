@@ -8,18 +8,21 @@
 
 **FAP Student Attendance System** là hệ thống backend RESTful API phục vụ việc điểm danh sinh viên tại trường Đại học FPT. Hệ thống hỗ trợ:
 
-- **Giảng viên** tạo buổi học, sinh mã QR điểm danh, quản lý khóa học (thiết lập mật khẩu bảo vệ lớp học) và theo dõi sinh viên.
-- **Sinh viên** tìm kiếm khóa học linh hoạt (theo tên lớp, môn học, học kỳ, tên giảng viên), đăng ký khóa học (với mật khẩu nếu có), xem danh sách các khóa học mình tham gia (kèm tên giảng viên), quét mã QR để điểm danh.
-- **Admin** quản lý toàn bộ hệ thống, import dữ liệu từ file Excel.
+- **Giảng viên**: Tạo buổi học, sinh mã QR điểm danh kèm mã PIN 6 chữ số (`sessionCode`), kiểm tra kết nối mạng Wi-Fi phòng học (`roomNetworkIp`), import danh sách sinh viên vào khóa học bằng Excel (.xlsx), quản lý khóa học (thiết lập mật khẩu bảo vệ lớp học), theo dõi sinh viên, xuất file báo cáo điểm danh Excel (.xlsx) 100% danh sách lớp (PRESENT/ABSENT).
+- **Sinh viên**: Tìm kiếm khóa học linh hoạt (theo tên lớp, môn học, học kỳ, giảng viên), đăng ký khóa học (với mật khẩu nếu có), xem danh sách các khóa học mình tham gia kèm tên giảng viên, điểm danh linh hoạt qua quét mã QR hoặc nhập mã PIN 6 chữ số, xem lịch sử điểm danh cá nhân của mình.
+- **Người dùng (tất cả vai trò)**: Cập nhật thông tin cá nhân (họ tên, email) và đổi mật khẩu an toàn, hệ thống tự động đồng bộ sang Google Sheets.
+- **Admin**: Quản lý toàn bộ hệ thống, import dữ liệu sinh viên/người dùng từ file Excel.
 
 ### Quy trình nghiệp vụ chính
 
 ```
-Giảng viên tạo khóa học (hỗ trợ đặt mật khẩu) → Sinh viên tìm kiếm & đăng ký khóa học
-    → Sinh viên xem danh sách khóa học tham gia (kèm tên giảng viên)
-        → Giảng viên tạo buổi điểm danh (sinh QR Code)
-            → Sinh viên quét QR để điểm danh
-                → Xuất báo cáo CSV / Đồng bộ Google Sheets
+Giảng viên tạo khóa học (hỗ trợ đặt mật khẩu) hoặc import danh sách sinh viên bằng Excel
+    → Sinh viên tìm kiếm & đăng ký khóa học
+        → Sinh viên xem danh sách khóa học tham gia (kèm tên giảng viên & bộ lọc)
+            → Giảng viên tạo buổi điểm danh (sinh QR Code & mã PIN 6 số, tùy chọn Wi-Fi IP)
+                → Sinh viên quét QR hoặc nhập PIN để điểm danh (hệ thống kiểm tra IP/Wi-Fi nếu có)
+                    → Sinh viên xem lịch sử điểm danh cá nhân
+                        → Giảng viên xuất báo cáo Excel (.xlsx đầy đủ 100% sinh viên) / CSV / Đồng bộ Google Sheets
 ```
 
 ---
@@ -61,11 +64,11 @@ attendance_backend/
         │   │
         │   ├── controller/                         # 🎯 REST API Controllers
         │   │   ├── AuthController.java             # Đăng ký / Đăng nhập
-        │   │   ├── CourseController.java           # Quản lý, tìm kiếm, đăng ký & lấy danh sách khóa học tham gia
+        │   │   ├── CourseController.java           # Quản lý, tìm kiếm, import SV & đăng ký khóa học
         │   │   ├── EnrollmentController.java       # Đăng ký khóa học & danh sách lớp
-        │   │   ├── AttendanceSessionController.java # Quản lý buổi điểm danh
-        │   │   ├── AttendanceController.java       # Điểm danh & xuất CSV
-        │   │   ├── UserController.java             # Import user từ Excel
+        │   │   ├── AttendanceSessionController.java # Quản lý buổi điểm danh (QR & PIN code)
+        │   │   ├── AttendanceController.java       # Điểm danh, lịch sử cá nhân, xuất CSV & Excel
+        │   │   ├── UserController.java             # Profile, đổi mật khẩu & import Excel
         │   │   └── SyncLogController.java          # Nhật ký đồng bộ
         │   │
         │   ├── dto/                                # 📦 Data Transfer Objects
@@ -76,15 +79,19 @@ attendance_backend/
         │   │   │   ├── CourseRegisterRequest.java   # Đăng ký khóa học (courseId, userId, coursePassword)
         │   │   │   ├── EnrollmentRequest.java
         │   │   │   ├── SessionCreateRequest.java
-        │   │   │   └── CheckInRequest.java
+        │   │   │   ├── CheckInRequest.java         # Điểm danh qua QR hoặc mã PIN 6 số
+        │   │   │   ├── UpdateProfileRequest.java   # Cập nhật thông tin cá nhân
+        │   │   │   └── ChangePasswordRequest.java  # Đổi mật khẩu
         │   │   └── response/                       # Output DTOs (Server → Client)
         │   │       ├── ApiResponse.java            # Cấu trúc response chuẩn
         │   │       ├── AuthResponse.java
         │   │       ├── UserResponse.java
         │   │       ├── CourseResponse.java
         │   │       ├── EnrollmentResponse.java
-        │   │       ├── SessionResponse.java
+        │   │       ├── SessionResponse.java        # Thông tin buổi điểm danh (kèm sessionCode)
         │   │       ├── AttendanceRecordResponse.java
+        │   │       ├── AttendanceHistoryResponse.java # Lịch sử điểm danh cá nhân
+        │   │       ├── ImportStudentsResponse.java    # Kết quả import sinh viên vào khóa học
         │   │       └── SyncLogResponse.java
         │   │
         │   ├── model/                              # 🗄️ JPA Entities (Database Tables)
@@ -92,7 +99,7 @@ attendance_backend/
         │   │   ├── Role.java                       # Bảng roles
         │   │   ├── Course.java                     # Bảng courses
         │   │   ├── Enrollment.java                 # Bảng enrollments
-        │   │   ├── AttendanceSession.java          # Bảng attendance_sessions
+        │   │   ├── AttendanceSession.java          # Bảng attendance_sessions (session_code)
         │   │   ├── AttendanceRecord.java           # Bảng attendance_records
         │   │   └── GoogleSheetSyncLog.java         # Bảng google_sheet_sync_logs
         │   │
@@ -107,10 +114,11 @@ attendance_backend/
         │   │
         │   ├── service/                            # 💼 Business Logic Layer
         │   │   ├── AuthService.java                # Interface xác thực
-        │   │   ├── CourseService.java              # Interface khóa học
+        │   │   ├── CourseService.java              # Interface khóa học & import SV
         │   │   ├── EnrollmentService.java          # Interface đăng ký
         │   │   ├── AttendanceSessionService.java   # Interface buổi điểm danh
-        │   │   ├── AttendanceRecordService.java    # Interface điểm danh
+        │   │   ├── AttendanceRecordService.java    # Interface điểm danh & xuất Excel
+        │   │   ├── UserService.java                # Interface thông tin cá nhân & mật khẩu
         │   │   ├── ExcelImportService.java         # Interface import Excel
         │   │   ├── GoogleSheetsService.java        # Interface Google Sheets
         │   │   ├── SyncLogService.java             # Interface nhật ký
@@ -120,6 +128,7 @@ attendance_backend/
         │   │       ├── EnrollmentServiceImpl.java
         │   │       ├── AttendanceSessionServiceImpl.java
         │   │       ├── AttendanceRecordServiceImpl.java
+        │   │       ├── UserServiceImpl.java
         │   │       ├── ExcelImportServiceImpl.java
         │   │       ├── GoogleSheetsServiceImpl.java
         │   │       └── SyncLogServiceImpl.java
@@ -252,15 +261,15 @@ Dự án sử dụng kiến trúc **Layered Architecture** theo chuẩn Spring B
 
 ### 5.2. Chi tiết các bảng
 
-| Bảng                     | Mô tả                                         |
-|--------------------------|------------------------------------------------|
-| `roles`                  | Phân quyền: STUDENT, LECTURER, ADMIN           |
-| `users`                  | Thông tin người dùng (SV, GV, Admin)           |
-| `courses`                | Khóa học / Lớp học phần (có mật khẩu bảo vệ)   |
-| `enrollments`            | Đăng ký SV vào khóa học                        |
-| `attendance_sessions`    | Buổi điểm danh (chứa QR secret, thời hạn)     |
-| `attendance_records`     | Bản ghi điểm danh của từng SV                  |
-| `google_sheet_sync_logs` | Nhật ký đồng bộ dữ liệu với Google Sheets      |
+| Bảng                     | Mô tả                                                             |
+|--------------------------|-------------------------------------------------------------------|
+| `roles`                  | Phân quyền: STUDENT, LECTURER, ADMIN                              |
+| `users`                  | Thông tin người dùng (SV, GV, Admin, hỗ trợ đổi pass, cập nhật)   |
+| `courses`                | Khóa học / Lớp học phần (có mật khẩu bảo vệ)                      |
+| `enrollments`            | Đăng ký SV vào khóa học (thủ công hoặc import Excel)              |
+| `attendance_sessions`    | Buổi điểm danh (chứa QR secret, sessionCode 6 số, roomNetworkIp)  |
+| `attendance_records`     | Bản ghi điểm danh của từng SV (PRESENT/ABSENT)                    |
+| `google_sheet_sync_logs` | Nhật ký đồng bộ dữ liệu với Google Sheets                         |
 
 ---
 
@@ -274,11 +283,11 @@ Dự án sử dụng kiến trúc **Layered Architecture** theo chuẩn Spring B
 
 ### 6.2. Phân quyền (Roles)
 
-| Vai trò      | Quyền hạn                                                                           |
-|-------------|--------------------------------------------------------------------------------------|
-| `STUDENT`   | Tìm kiếm khóa học, đăng ký khóa học (hỗ trợ mật khẩu), xem danh sách khóa học tham gia (kèm tên giảng viên), điểm danh qua QR, xem lớp học|
-| `LECTURER`  | Tạo/sửa/xóa khóa học (hỗ trợ đặt mật khẩu bảo vệ), tạo/đóng buổi điểm danh, xem lịch sử, xuất CSV |
-| `ADMIN`     | Toàn quyền (tất cả quyền của STUDENT + LECTURER)                                    |
+| Vai trò      | Quyền hạn                                                                                                                                                                                |
+|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `STUDENT`   | Tìm kiếm khóa học nâng cao, đăng ký khóa học (hỗ trợ mật khẩu), xem khóa học tham gia (lọc semester/subjectCode), điểm danh qua QR / mã PIN 6 số (kiểm tra Wi-Fi IP), xem lịch sử cá nhân, đổi mật khẩu, cập nhật profile |
+| `LECTURER`  | Tạo/sửa/xóa khóa học (mật khẩu bảo vệ), import sinh viên bằng Excel (.xlsx), tạo buổi điểm danh (QR & PIN 6 số, Wi-Fi IP), đóng buổi điểm danh, xem lịch sử, xuất CSV & Excel 100% sinh viên, đổi mật khẩu, cập nhật profile |
+| `ADMIN`     | Toàn quyền (tất cả quyền của STUDENT + LECTURER), import danh sách người dùng hệ thống từ file Excel, xem toàn bộ log đồng bộ Google Sheets                                                |
 
 ### 6.3. Endpoints công khai (Không cần Token)
 
