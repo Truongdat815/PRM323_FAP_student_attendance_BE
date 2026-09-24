@@ -17,4 +17,6 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
     Optional<AttendanceSession> findBySessionCode(String sessionCode);
 
     List<AttendanceSession> findBySessionCodeAndStatus(String sessionCode, String status);
+
+    long countByCourseIdIn(List<String> courseIds);
 }

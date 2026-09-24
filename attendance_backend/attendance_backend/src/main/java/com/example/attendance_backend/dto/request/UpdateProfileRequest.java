@@ -1,7 +1,7 @@
 package com.example.attendance_backend.dto.request;
 
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,10 +16,20 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UpdateProfileRequest {
 
-    @NotBlank(message = "Họ và tên không được để trống")
+    /**
+     * Tên đăng nhập mới (tối thiểu 3 ký tự, tối đa 50 ký tự, không bắt buộc).
+     */
+    @Pattern(regexp = "^$|^.{3,50}$", message = "Tên đăng nhập (username) phải từ 3 đến 50 ký tự")
+    private String username;
+
+    /**
+     * Họ và tên mới (không bắt buộc).
+     */
     private String fullName;
 
-    @NotBlank(message = "Email không được để trống")
+    /**
+     * Email mới (không bắt buộc).
+     */
     @Email(message = "Email không đúng định dạng")
     private String email;
 }

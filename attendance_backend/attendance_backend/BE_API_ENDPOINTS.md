@@ -505,25 +505,30 @@ curl -X POST http://localhost:8080/api/courses/register \
 
 ---
 
-### 2.8. Lấy danh sách khóa học của học sinh (My Courses)
+### 2.8. Lấy danh sách khóa học của tôi (My Courses)
 
-| Thuộc tính   | Giá trị                                               |
-|-------------|-------------------------------------------------------|
-| **Tên**     | Get Enrolled Courses                                  |
-| **Method**  | `GET`                                                 |
-| **URL**     | `/api/courses/my-courses`                             |
-| **Auth**    | ✅ Bearer Token — `STUDENT`, `ADMIN`                  |
+| Thuộc tính   | Giá trị                                                        |
+|-------------|----------------------------------------------------------------|
+| **Tên**     | Get My Courses                                                 |
+| **Method**  | `GET`                                                          |
+| **URL**     | `/api/courses/my-courses`                                      |
+| **Auth**    | ✅ Bearer Token — `STUDENT`, `LECTURER`, `ADMIN`                |
+
+> 📌 **Phân quyền và hành vi**:
+> - **Nếu caller là `STUDENT`**: Trả về các khóa học sinh viên đã ghi danh tham gia.
+> - **Nếu caller là `LECTURER`**: Trả về các khóa học do chính giảng viên đó phụ trách (lấy theo `lecturerId` từ JWT Token).
+> - **Nếu caller là `ADMIN`**: Có thể truyền param `studentId` để xem khóa học đã ghi danh của một học sinh cụ thể hoặc mặc định lấy khóa học của tài khoản đang đăng nhập.
 
 **Query Parameters** *(Tùy chọn lọc nâng cao)*:
 
 | Param          | Type     | Required | Mô tả                                                                             |
 |----------------|----------|----------|-----------------------------------------------------------------------------------|
-| `studentId`    | `string` | ❌       | Mã học sinh (`userId`, `username`, `fapCode`). Nếu bỏ trống = lấy từ user login   |
+| `studentId`    | `string` | ❌       | Mã học sinh (`userId`, `username`, `fapCode`). Dành cho STUDENT/ADMIN tra cứu     |
 | `subjectCode`  | `string` | ❌       | Lọc theo mã môn học (tìm tương đối, VD: `PRM392`)                                  |
 | `semester`     | `string` | ❌       | Lọc theo học kỳ (VD: `FA24`, `SP25`)                                              |
-| `lecturerName` | `string` | ❌       | Lọc theo họ tên giảng viên (tìm tương đối)                                        |
+| `lecturerName` | `string` | ❌       | Lọc theo họ tên giảng viên (tìm tương đối, áp dụng khi tra cứu khóa học của SV)   |
 
-**Response** (`200 OK`):
+**Response khi caller là STUDENT** (`200 OK`):
 
 ```json
 {
@@ -553,9 +558,30 @@ curl -X POST http://localhost:8080/api/courses/register \
 }
 ```
 
+**Response khi caller là LECTURER** (`200 OK`):
+
+```json
+{
+  "success": true,
+  "message": "Lấy danh sách khóa học của giảng viên thành công",
+  "data": [
+    {
+      "courseId": "CRS-001",
+      "subjectCode": "PRM392",
+      "className": "SE1701",
+      "semester": "FA24",
+      "lecturerId": "USR-LEC1",
+      "lecturerName": "Nguyễn Văn A",
+      "createdAt": "2026-09-20T10:00:00"
+    }
+  ],
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
 **Ví dụ Request**:
 ```bash
-# Lấy danh sách khóa học của chính mình
+# Sinh viên hoặc Giảng viên lấy danh sách khóa học của chính mình (dựa theo JWT)
 curl -X GET http://localhost:8080/api/courses/my-courses \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
 
@@ -1291,10 +1317,11 @@ curl -X POST http://localhost:8080/api/users/import-excel \
 
 **Request Body** (`application/json`):
 
-| Field      | Type     | Required | Mô tả                                             |
-|------------|----------|----------|----------------------------------------------------|
-| `fullName` | `string` | ❌       | Họ và tên mới                                      |
-| `email`    | `string` | ❌       | Email mới (hệ thống kiểm tra trùng lặp email khác) |
+| Field      | Type     | Required | Mô tả                                                 |
+|------------|----------|----------|--------------------------------------------------------|
+| `username` | `string` | ❌       | Tên đăng nhập mới (tối thiểu 3 ký tự, không trùng lặp) |
+| `fullName` | `string` | ❌       | Họ và tên mới                                          |
+| `email`    | `string` | ❌       | Email mới (hệ thống kiểm tra trùng lặp email khác)     |
 
 > 💡 **Đồng bộ**: Khi cập nhật thông tin thành công, hệ thống tự động đồng bộ thay đổi sang tab `USERS` trên Google Sheets.
 
@@ -1324,6 +1351,7 @@ curl -X PUT http://localhost:8080/api/users/profile \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: application/json" \
   -d '{
+    "username": "datnht_updated",
     "fullName": "Ngô Hoàng Trường Đạt (Updated)",
     "email": "datnhse192964_new@fpt.edu.vn"
   }'
@@ -1424,37 +1452,117 @@ curl -X GET http://localhost:8080/api/sync-logs \
 
 ---
 
+## 8. 👨‍🏫 Lecturer Controller
+
+**Base path**: `/api/lecturer` (hoặc `/api/lecturers`)
+
+---
+
+### 8.1. Thống kê Dashboard riêng cho Giảng viên
+
+| Thuộc tính   | Giá trị                                                                |
+|-------------|------------------------------------------------------------------------|
+| **Tên**     | Lecturer Dashboard Stats                                               |
+| **Method**  | `GET`                                                                  |
+| **URL**     | `/api/lecturer/dashboard-stats` *(hoặc alias: `/api/lecturer/stats`)* |
+| **Auth**    | ✅ Bearer Token — `LECTURER`, `ADMIN`                                  |
+
+> 💡 **Mục đích**: Trả về trực tiếp các số liệu thống kê chỉ trong 1 request duy nhất dựa trên JWT của Giảng viên đang đăng nhập.
+
+**Query Parameters**:
+
+| Param        | Type     | Required | Mô tả                                                                                                        |
+|--------------|----------|----------|---------------------------------------------------------------------------------------------------------------|
+| `lecturerId` | `string` | ❌       | Mã giảng viên (`userId`). Dành riêng cho `ADMIN` để tra cứu số liệu của một GV cụ thể. Mặc định lấy theo token JWT |
+
+**Response** (`200 OK`):
+
+```json
+{
+  "success": true,
+  "message": "Lấy thông tin tổng quan giảng viên thành công",
+  "data": {
+    "lecturerId": "l1m2n3o4-p5q6-7890-rstu-vwxyz1234567",
+    "totalCourses": 5,
+    "totalRegisteredStudents": 142,
+    "activeSemestersCount": 2,
+    "activeSemesters": [
+      "FA24",
+      "SP25"
+    ],
+    "totalSessions": 18,
+    "recentCourses": [
+      {
+        "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
+        "subjectCode": "PRM392",
+        "className": "SE1701",
+        "semester": "FA24",
+        "studentCount": 35
+      }
+    ]
+  },
+  "timestamp": "2026-09-24T08:00:00.000Z"
+}
+```
+
+**Chi tiết các trường dữ liệu `data`**:
+- `lecturerId`: ID định danh của giảng viên (`userId`).
+- `totalCourses`: Tổng số khóa học do giảng viên phụ trách.
+- `totalRegisteredStudents`: Tổng số lượt sinh viên đã ghi danh vào tất cả các khóa học của giảng viên.
+- `activeSemestersCount`: Số lượng học kỳ đang hoạt động của giảng viên.
+- `activeSemesters`: Danh sách mã học kỳ không trùng lặp (ví dụ: `["FA24", "SP25"]`).
+- `totalSessions`: Tổng số buổi điểm danh đã tạo trong các khóa học của giảng viên.
+- `recentCourses`: Danh sách các khóa học gần đây nhất (sắp xếp theo ngày tạo mới nhất), mỗi khóa học gồm: `courseId`, `subjectCode`, `className`, `semester`, `studentCount`.
+
+**Ví dụ Request**:
+```bash
+# Giảng viên lấy thống kê tổng quan của chính mình
+curl -X GET http://localhost:8080/api/lecturer/dashboard-stats \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+
+# Hoặc dùng URL alias rút gọn
+curl -X GET http://localhost:8080/api/lecturer/stats \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+
+# Quản trị viên (ADMIN) xem thống kê của giảng viên cụ thể
+curl -X GET "http://localhost:8080/api/lecturer/dashboard-stats?lecturerId=l1m2n3o4-p5q6-7890-rstu-vwxyz1234567" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+---
+
 ## 📊 Tổng hợp tất cả Endpoints
 
-| #  | Method   | URL                                            | Auth         | Role                 | Mô tả                                                |
-|----|----------|------------------------------------------------|-------------|----------------------|-------------------------------------------------------|
-| 1  | `POST`   | `/api/auth/register`                           | ❌ Public   | —                    | Đăng ký tài khoản                                     |
-| 2  | `POST`   | `/api/auth/login`                              | ❌ Public   | —                    | Đăng nhập, lấy JWT Token                              |
-| 3  | `GET`    | `/api/courses`                                 | ✅ Token    | Tất cả               | Lấy danh sách khóa học (lọc lecturerId)               |
-| 4  | `GET`    | `/api/courses/{id}`                            | ✅ Token    | Tất cả               | Xem chi tiết khóa học                                 |
-| 5  | `POST`   | `/api/courses`                                 | ✅ Token    | LECTURER, ADMIN      | Tạo khóa học mới                                      |
-| 6  | `PUT`    | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN      | Cập nhật khóa học                                     |
-| 7  | `DELETE` | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN      | Xóa khóa học                                          |
-| 8  | `GET`    | `/api/courses/search`                          | ✅ Token    | Tất cả               | Tìm kiếm khóa học nâng cao (subject, class, sem, lec) |
-| 9  | `GET`    | `/api/courses/my-courses`                      | ✅ Token    | STUDENT, ADMIN       | Xem khóa học đã tham gia (hỗ trợ lọc semester/subject)|
-| 10 | `POST`   | `/api/courses/{courseId}/enroll`               | ✅ Token    | STUDENT, ADMIN       | Sinh viên đăng ký tham gia khóa học                   |
-| 11 | `POST`   | `/api/courses/{courseId}/import-students`      | ✅ Token    | LECTURER, ADMIN      | Import danh sách sinh viên vào khóa học bằng Excel    |
-| 12 | `POST`   | `/api/enrollments`                             | ✅ Token    | STUDENT, ADMIN       | Đăng ký tham gia khóa học (EnrollmentController)      |
-| 13 | `GET`    | `/api/enrollments/my-courses`                  | ✅ Token    | STUDENT, ADMIN       | Xem khóa học đã đăng ký (EnrollmentController)        |
-| 14 | `GET`    | `/api/enrollments/course/{courseId}`            | ✅ Token    | LECTURER, ADMIN      | DS sinh viên trong lớp                                |
-| 15 | `POST`   | `/api/sessions`                                | ✅ Token    | LECTURER, ADMIN      | Tạo buổi điểm danh (sinh QR & mã PIN 6 số)            |
-| 16 | `GET`    | `/api/sessions/{sessionId}`                    | ✅ Token    | Tất cả               | Chi tiết buổi điểm danh                               |
-| 17 | `GET`    | `/api/sessions/course/{courseId}`               | ✅ Token    | Tất cả               | DS buổi điểm danh theo khóa học                       |
-| 18 | `PUT`    | `/api/sessions/{sessionId}/close`              | ✅ Token    | LECTURER, ADMIN      | Đóng buổi điểm danh                                  |
-| 19 | `POST`   | `/api/attendance/check-in`                     | ✅ Token    | STUDENT, ADMIN       | Điểm danh qua QR / mã PIN / kiểm tra Wi-Fi            |
-| 20 | `GET`    | `/api/attendance/session/{sessionId}`          | ✅ Token    | LECTURER, ADMIN      | Lịch sử điểm danh buổi học                            |
-| 21 | `GET`    | `/api/attendance/my-history`                   | ✅ Token    | STUDENT, ADMIN       | Lịch sử điểm danh cá nhân sinh viên                   |
-| 22 | `GET`    | `/api/attendance/export/{sessionId}`           | ✅ Token    | LECTURER, ADMIN      | Xuất CSV điểm danh                                    |
-| 23 | `GET`    | `/api/attendance/export-excel/{sessionId}`     | ✅ Token    | LECTURER, ADMIN      | Xuất Excel 100% sinh viên (PRESENT / ABSENT)          |
-| 24 | `POST`   | `/api/users/import-excel`                      | ❌ Public   | —                    | Import danh sách người dùng từ Excel                  |
-| 25 | `PUT`    | `/api/users/profile`                           | ✅ Token    | Tất cả               | Cập nhật thông tin cá nhân (sync Sheets)              |
-| 26 | `PUT`    | `/api/users/change-password`                   | ✅ Token    | Tất cả               | Đổi mật khẩu tài khoản (sync Sheets)                  |
-| 27 | `GET`    | `/api/sync-logs`                               | ✅ Token    | ADMIN, LECTURER      | Xem nhật ký đồng bộ Google Sheets                     |
+| #  | Method   | URL                                            | Auth         | Role                      | Mô tả                                                |
+|----|----------|------------------------------------------------|-------------|---------------------------|-------------------------------------------------------|
+| 1  | `POST`   | `/api/auth/register`                           | ❌ Public   | —                         | Đăng ký tài khoản                                     |
+| 2  | `POST`   | `/api/auth/login`                              | ❌ Public   | —                         | Đăng nhập, lấy JWT Token                              |
+| 3  | `GET`    | `/api/courses`                                 | ✅ Token    | Tất cả                    | Lấy danh sách khóa học (lọc lecturerId)               |
+| 4  | `GET`    | `/api/courses/{id}`                            | ✅ Token    | Tất cả                    | Xem chi tiết khóa học                                 |
+| 5  | `POST`   | `/api/courses`                                 | ✅ Token    | LECTURER, ADMIN           | Tạo khóa học mới                                      |
+| 6  | `PUT`    | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN           | Cập nhật khóa học                                     |
+| 7  | `DELETE` | `/api/courses/{id}`                            | ✅ Token    | LECTURER, ADMIN           | Xóa khóa học                                          |
+| 8  | `GET`    | `/api/courses/search`                          | ✅ Token    | Tất cả                    | Tìm kiếm khóa học nâng cao (subject, class, sem, lec) |
+| 9  | `GET`    | `/api/courses/my-courses`                      | ✅ Token    | STUDENT, LECTURER, ADMIN  | Xem khóa học của tôi (SV: đã ghi danh, GV: phụ trách) |
+| 10 | `POST`   | `/api/courses/{courseId}/enroll`               | ✅ Token    | STUDENT, ADMIN            | Sinh viên đăng ký tham gia khóa học                   |
+| 11 | `POST`   | `/api/courses/{courseId}/import-students`      | ✅ Token    | LECTURER, ADMIN           | Import danh sách sinh viên vào khóa học bằng Excel    |
+| 12 | `POST`   | `/api/enrollments`                             | ✅ Token    | STUDENT, ADMIN            | Đăng ký tham gia khóa học (EnrollmentController)      |
+| 13 | `GET`    | `/api/enrollments/my-courses`                  | ✅ Token    | STUDENT, ADMIN            | Xem khóa học đã đăng ký (EnrollmentController)        |
+| 14 | `GET`    | `/api/enrollments/course/{courseId}`            | ✅ Token    | LECTURER, ADMIN           | DS sinh viên trong lớp                                |
+| 15 | `POST`   | `/api/sessions`                                | ✅ Token    | LECTURER, ADMIN           | Tạo buổi điểm danh (sinh QR & mã PIN 6 số)            |
+| 16 | `GET`    | `/api/sessions/{sessionId}`                    | ✅ Token    | Tất cả                    | Chi tiết buổi điểm danh                               |
+| 17 | `GET`    | `/api/sessions/course/{courseId}`               | ✅ Token    | Tất cả                    | DS buổi điểm danh theo khóa học                       |
+| 18 | `PUT`    | `/api/sessions/{sessionId}/close`              | ✅ Token    | LECTURER, ADMIN           | Đóng buổi điểm danh                                  |
+| 19 | `POST`   | `/api/attendance/check-in`                     | ✅ Token    | STUDENT, ADMIN            | Điểm danh qua QR / mã PIN / kiểm tra Wi-Fi            |
+| 20 | `GET`    | `/api/attendance/session/{sessionId}`          | ✅ Token    | LECTURER, ADMIN           | Lịch sử điểm danh buổi học                            |
+| 21 | `GET`    | `/api/attendance/my-history`                   | ✅ Token    | STUDENT, ADMIN            | Lịch sử điểm danh cá nhân sinh viên                   |
+| 22 | `GET`    | `/api/attendance/export/{sessionId}`           | ✅ Token    | LECTURER, ADMIN           | Xuất CSV điểm danh                                    |
+| 23 | `GET`    | `/api/attendance/export-excel/{sessionId}`     | ✅ Token    | LECTURER, ADMIN           | Xuất Excel 100% sinh viên (PRESENT / ABSENT)          |
+| 24 | `POST`   | `/api/users/import-excel`                      | ❌ Public   | —                         | Import danh sách người dùng từ Excel                  |
+| 25 | `PUT`    | `/api/users/profile`                           | ✅ Token    | Tất cả                    | Cập nhật thông tin cá nhân (sync Sheets)              |
+| 26 | `PUT`    | `/api/users/change-password`                   | ✅ Token    | Tất cả                    | Đổi mật khẩu tài khoản (sync Sheets)                  |
+| 27 | `GET`    | `/api/sync-logs`                               | ✅ Token    | ADMIN, LECTURER           | Xem nhật ký đồng bộ Google Sheets                     |
+| 28 | `GET`    | `/api/lecturer/dashboard-stats`                | ✅ Token    | LECTURER, ADMIN           | Thống kê Dashboard giảng viên (courses, SV, sessions) |
 
 ---
 

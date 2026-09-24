@@ -64,7 +64,8 @@ attendance_backend/
         │   │
         │   ├── controller/                         # 🎯 REST API Controllers
         │   │   ├── AuthController.java             # Đăng ký / Đăng nhập
-        │   │   ├── CourseController.java           # Quản lý, tìm kiếm, import SV & đăng ký khóa học
+        │   │   ├── CourseController.java           # Quản lý, tìm kiếm, import SV & đăng ký khóa học (hỗ trợ /my-courses cho GV & SV)
+        │   │   ├── LecturerController.java         # Thống kê Dashboard & tổng quan dành riêng cho Giảng viên
         │   │   ├── EnrollmentController.java       # Đăng ký khóa học & danh sách lớp
         │   │   ├── AttendanceSessionController.java # Quản lý buổi điểm danh (QR & PIN code)
         │   │   ├── AttendanceController.java       # Điểm danh, lịch sử cá nhân, xuất CSV & Excel
@@ -87,6 +88,8 @@ attendance_backend/
         │   │       ├── AuthResponse.java
         │   │       ├── UserResponse.java
         │   │       ├── CourseResponse.java
+        │   │       ├── LecturerDashboardStatsResponse.java # Thống kê tổng quan Dashboard giảng viên
+        │   │       ├── RecentCourseResponse.java   # Thông tin tóm tắt khóa học gần đây
         │   │       ├── EnrollmentResponse.java
         │   │       ├── SessionResponse.java        # Thông tin buổi điểm danh (kèm sessionCode)
         │   │       ├── AttendanceRecordResponse.java
@@ -115,6 +118,7 @@ attendance_backend/
         │   ├── service/                            # 💼 Business Logic Layer
         │   │   ├── AuthService.java                # Interface xác thực
         │   │   ├── CourseService.java              # Interface khóa học & import SV
+        │   │   ├── LecturerService.java            # Interface thống kê Dashboard giảng viên
         │   │   ├── EnrollmentService.java          # Interface đăng ký
         │   │   ├── AttendanceSessionService.java   # Interface buổi điểm danh
         │   │   ├── AttendanceRecordService.java    # Interface điểm danh & xuất Excel
@@ -125,6 +129,7 @@ attendance_backend/
         │   │   └── impl/                           # Implementations
         │   │       ├── AuthServiceImpl.java
         │   │       ├── CourseServiceImpl.java
+        │   │       ├── LecturerServiceImpl.java
         │   │       ├── EnrollmentServiceImpl.java
         │   │       ├── AttendanceSessionServiceImpl.java
         │   │       ├── AttendanceRecordServiceImpl.java
@@ -286,7 +291,7 @@ Dự án sử dụng kiến trúc **Layered Architecture** theo chuẩn Spring B
 | Vai trò      | Quyền hạn                                                                                                                                                                                |
 |-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `STUDENT`   | Tìm kiếm khóa học nâng cao, đăng ký khóa học (hỗ trợ mật khẩu), xem khóa học tham gia (lọc semester/subjectCode), điểm danh qua QR / mã PIN 6 số (kiểm tra Wi-Fi IP), xem lịch sử cá nhân, đổi mật khẩu, cập nhật profile |
-| `LECTURER`  | Tạo/sửa/xóa khóa học (mật khẩu bảo vệ), import sinh viên bằng Excel (.xlsx), tạo buổi điểm danh (QR & PIN 6 số, Wi-Fi IP), đóng buổi điểm danh, xem lịch sử, xuất CSV & Excel 100% sinh viên, đổi mật khẩu, cập nhật profile |
+| `LECTURER`  | Tạo/sửa/xóa khóa học (mật khẩu bảo vệ), xem khóa học của tôi (`/api/courses/my-courses`), xem thống kê Dashboard riêng (`/api/lecturer/dashboard-stats`), import sinh viên bằng Excel (.xlsx), tạo buổi điểm danh (QR & PIN 6 số, Wi-Fi IP), đóng buổi điểm danh, xem lịch sử, xuất CSV & Excel 100% sinh viên, đổi mật khẩu, cập nhật profile |
 | `ADMIN`     | Toàn quyền (tất cả quyền của STUDENT + LECTURER), import danh sách người dùng hệ thống từ file Excel, xem toàn bộ log đồng bộ Google Sheets                                                |
 
 ### 6.3. Endpoints công khai (Không cần Token)

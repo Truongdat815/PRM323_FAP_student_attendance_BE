@@ -45,20 +45,40 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateProfile(UpdateProfileRequest request, String currentUsername) throws IOException {
         User user = getCurrentUser(currentUsername);
 
-        String newEmail = request.getEmail().trim();
-        String newFullName = request.getFullName().trim();
-
-        // Kiểm tra tính duy nhất của email nếu thay đổi
-        if (user.getEmail() == null || !user.getEmail().equalsIgnoreCase(newEmail)) {
-            userRepository.findByEmail(newEmail).ifPresent(existing -> {
-                if (!existing.getUserId().equals(user.getUserId())) {
-                    throw new AppException(HttpStatus.BAD_REQUEST, "Email đã được sử dụng bởi tài khoản khác.");
-                }
-            });
+        // 1. Cập nhật Username nếu có truyền
+        if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
+            String newUsername = request.getUsername().trim();
+            if (newUsername.length() < 3 || newUsername.length() > 50) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "Tên đăng nhập (username) phải từ 3 đến 50 ký tự.");
+            }
+            if (!newUsername.equalsIgnoreCase(user.getUsername())) {
+                userRepository.findByUsername(newUsername).ifPresent(existing -> {
+                    if (!existing.getUserId().equals(user.getUserId())) {
+                        throw new AppException(HttpStatus.BAD_REQUEST, "Tên đăng nhập đã được sử dụng bởi tài khoản khác.");
+                    }
+                });
+                user.setUsername(newUsername);
+            }
         }
 
-        user.setFullName(newFullName);
-        user.setEmail(newEmail);
+        // 2. Cập nhật Họ và tên nếu có truyền
+        if (request.getFullName() != null && !request.getFullName().trim().isEmpty()) {
+            user.setFullName(request.getFullName().trim());
+        }
+
+        // 3. Cập nhật Email nếu có truyền
+        if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+            String newEmail = request.getEmail().trim();
+            if (user.getEmail() == null || !user.getEmail().equalsIgnoreCase(newEmail)) {
+                userRepository.findByEmail(newEmail).ifPresent(existing -> {
+                    if (!existing.getUserId().equals(user.getUserId())) {
+                        throw new AppException(HttpStatus.BAD_REQUEST, "Email đã được sử dụng bởi tài khoản khác.");
+                    }
+                });
+                user.setEmail(newEmail);
+            }
+        }
+
         userRepository.save(user);
 
         log.info("✅ Cập nhật thông tin người dùng thành công: userId={}, username={}", user.getUserId(), user.getUsername());

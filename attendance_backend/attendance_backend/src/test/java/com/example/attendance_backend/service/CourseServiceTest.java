@@ -264,7 +264,7 @@ class CourseServiceTest {
 
     @Test
     void testSearchCoursesSuccess() throws IOException {
-        when(courseRepository.searchCourses("SE1701", "PRM392", "FA24", "Nguyễn"))
+        when(courseRepository.searchCourses("SE1701", "PRM392", "FA24", "Nguyễn", null))
                 .thenReturn(List.of(sampleCourse));
         when(userRepository.findAllById(any())).thenReturn(List.of(lecturer));
 
@@ -274,5 +274,52 @@ class CourseServiceTest {
         assertEquals(1, responses.size());
         assertEquals("CRS-001", responses.get(0).getCourseId());
         assertEquals("Nguyễn Văn A", responses.get(0).getLecturerName());
+    }
+
+    @Test
+    void testGetLecturerCourses() throws IOException {
+        when(userRepository.findById("USR-LEC1")).thenReturn(Optional.of(lecturer));
+        when(courseRepository.findByLecturerId("USR-LEC1")).thenReturn(List.of(sampleCourse));
+
+        List<CourseResponse> responses = courseService.getLecturerCourses("USR-LEC1", "PRM392", "FA24");
+
+        assertNotNull(responses);
+        assertEquals(1, responses.size());
+        assertEquals("CRS-001", responses.get(0).getCourseId());
+        assertEquals("Nguyễn Văn A", responses.get(0).getLecturerName());
+    }
+
+    @Test
+    void testGetMyCoursesAsLecturer() throws IOException {
+        when(userRepository.findByUsername("teacher1")).thenReturn(Optional.of(lecturer));
+        when(userRepository.findById("USR-LEC1")).thenReturn(Optional.of(lecturer));
+        when(courseRepository.findByLecturerId("USR-LEC1")).thenReturn(List.of(sampleCourse));
+
+        List<CourseResponse> responses = courseService.getMyCourses("teacher1", null, null, null, null);
+
+        assertNotNull(responses);
+        assertEquals(1, responses.size());
+        assertEquals("CRS-001", responses.get(0).getCourseId());
+        assertEquals("Nguyễn Văn A", responses.get(0).getLecturerName());
+    }
+
+    @Test
+    void testGetMyCoursesAsStudent() throws IOException {
+        when(userRepository.findByUsername("student1")).thenReturn(Optional.of(student));
+        when(userRepository.findById("USR-STU1")).thenReturn(Optional.of(student));
+        com.example.attendance_backend.model.Enrollment enrollment = com.example.attendance_backend.model.Enrollment.builder()
+                .enrollmentId("ENR-1")
+                .courseId("CRS-001")
+                .studentId("USR-STU1")
+                .build();
+        when(enrollmentRepository.findByStudentId("USR-STU1")).thenReturn(List.of(enrollment));
+        when(courseRepository.findAllById(List.of("CRS-001"))).thenReturn(List.of(sampleCourse));
+        when(userRepository.findAllById(any())).thenReturn(List.of(lecturer));
+
+        List<CourseResponse> responses = courseService.getMyCourses("student1", null, null, null, null);
+
+        assertNotNull(responses);
+        assertEquals(1, responses.size());
+        assertEquals("CRS-001", responses.get(0).getCourseId());
     }
 }

@@ -341,6 +341,50 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    public List<CourseResponse> getLecturerCourses(String lecturerId, String subjectCode, String semester) throws IOException {
+        User lecturer = userRepository.findById(lecturerId)
+                .or(() -> userRepository.findByUsername(lecturerId))
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy giảng viên với mã: " + lecturerId));
+
+        List<Course> courses = courseRepository.findByLecturerId(lecturer.getUserId());
+
+        return courses.stream()
+                .filter(c -> {
+                    if (subjectCode != null && !subjectCode.trim().isEmpty()) {
+                        if (c.getSubjectCode() == null || !c.getSubjectCode().toLowerCase().contains(subjectCode.trim().toLowerCase())) {
+                            return false;
+                        }
+                    }
+                    if (semester != null && !semester.trim().isEmpty()) {
+                        if (c.getSemester() == null || !c.getSemester().equalsIgnoreCase(semester.trim())) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .map(c -> CourseResponse.fromCourse(c, lecturer.getFullName()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<CourseResponse> getMyCourses(String currentUsername, String studentId, String subjectCode, String semester, String lecturerName) throws IOException {
+        User currentUser = getCurrentUser(currentUsername);
+
+        boolean isLecturer = "ROLE_LECTURER".equalsIgnoreCase(currentUser.getRoleId())
+                || "LECTURER".equalsIgnoreCase(currentUser.getRoleId());
+
+        if (isLecturer && (studentId == null || studentId.trim().isEmpty())) {
+            return getLecturerCourses(currentUser.getUserId(), subjectCode, semester);
+        }
+
+        String targetStudentId = (studentId != null && !studentId.trim().isEmpty())
+                ? studentId.trim()
+                : currentUser.getUserId();
+
+        return getEnrolledCourses(targetStudentId, subjectCode, semester, lecturerName);
+    }
+
+    @Override
     public ImportStudentsResponse importStudentsToCourse(String courseId, MultipartFile file, String currentUsername) throws IOException {
         User currentUser = getCurrentUser(currentUsername);
 

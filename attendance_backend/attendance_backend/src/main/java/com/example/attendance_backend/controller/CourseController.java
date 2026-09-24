@@ -59,19 +59,21 @@ public class CourseController {
     }
 
     @GetMapping("/my-courses")
-    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
-    @Operation(summary = "Lấy danh sách khóa học của học sinh", description = "Trả về danh sách các khóa học mà học sinh đã đăng ký tham gia, kèm theo tên giảng viên và các bộ lọc tùy chọn. Nếu không truyền studentId thì lấy theo người dùng đang đăng nhập.")
-    public ResponseEntity<ApiResponse<List<CourseResponse>>> getEnrolledCourses(
+    @PreAuthorize("hasAnyRole('STUDENT', 'LECTURER', 'ADMIN')")
+    @Operation(summary = "Lấy danh sách khóa học của tôi", description = "Nếu caller là STUDENT: Trả về các khóa học sinh viên đã ghi danh. Nếu caller là LECTURER: Trả về các khóa học do chính giảng viên đó phụ trách (lấy theo lecturerId từ JWT Token). Hỗ trợ các bộ lọc tùy chọn subjectCode, semester, lecturerName.")
+    public ResponseEntity<ApiResponse<List<CourseResponse>>> getMyCourses(
             @RequestParam(required = false) String studentId,
             @RequestParam(required = false) String subjectCode,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) String lecturerName,
             Authentication authentication) throws IOException {
-        String targetStudentId = (studentId != null && !studentId.trim().isEmpty())
-                ? studentId.trim()
-                : authentication.getName();
-        List<CourseResponse> courses = courseService.getEnrolledCourses(targetStudentId, subjectCode, semester, lecturerName);
-        return ResponseEntity.ok(ApiResponse.ok("Lấy danh sách khóa học của học sinh thành công", courses));
+        List<CourseResponse> courses = courseService.getMyCourses(authentication.getName(), studentId, subjectCode, semester, lecturerName);
+        boolean isLecturer = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_LECTURER") || a.getAuthority().equalsIgnoreCase("LECTURER"));
+        String message = (isLecturer && (studentId == null || studentId.trim().isEmpty()))
+                ? "Lấy danh sách khóa học của giảng viên thành công"
+                : "Lấy danh sách khóa học của học sinh thành công";
+        return ResponseEntity.ok(ApiResponse.ok(message, courses));
     }
 
     @PostMapping(value = "/{courseId}/import-students", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
