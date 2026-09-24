@@ -26,5 +26,11 @@ public interface CourseService {
 
     List<CourseResponse> searchCourses(String className, String subjectCode, String semester, String lecturerName) throws IOException;
 
+    List<CourseResponse> searchCourses(String className, String subjectCode, String semester, String lecturerName, String lecturerId) throws IOException;
+
     List<CourseResponse> getEnrolledCourses(String studentId) throws IOException;
+
+    List<CourseResponse> getEnrolledCourses(String studentId, String subjectCode, String semester, String lecturerName) throws IOException;
+
+    com.example.attendance_backend.dto.response.ImportStudentsResponse importStudentsToCourse(String courseId, org.springframework.web.multipart.MultipartFile file, String currentUsername) throws IOException;
 }

@@ -4,6 +4,7 @@ import com.example.attendance_backend.dto.request.CourseRegisterRequest;
 import com.example.attendance_backend.dto.request.CourseRequest;
 import com.example.attendance_backend.dto.response.ApiResponse;
 import com.example.attendance_backend.dto.response.CourseResponse;
+import com.example.attendance_backend.dto.response.ImportStudentsResponse;
 import com.example.attendance_backend.service.CourseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -11,10 +12,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
@@ -44,27 +47,43 @@ public class CourseController {
     }
 
     @GetMapping("/search")
-    @Operation(summary = "Tìm kiếm khóa học", description = "Tìm kiếm khóa học theo className, subjectCode, semester và tên của giảng viên (các tiêu chí đều là tùy chọn và có thể kết hợp)")
+    @Operation(summary = "Tìm kiếm khóa học", description = "Tìm kiếm khóa học theo className, subjectCode, semester, tên của giảng viên hoặc lọc theo lecturerId")
     public ResponseEntity<ApiResponse<List<CourseResponse>>> searchCourses(
             @RequestParam(required = false) String className,
             @RequestParam(required = false) String subjectCode,
             @RequestParam(required = false) String semester,
-            @RequestParam(required = false) String lecturerName) throws IOException {
-        List<CourseResponse> courses = courseService.searchCourses(className, subjectCode, semester, lecturerName);
+            @RequestParam(required = false) String lecturerName,
+            @RequestParam(required = false) String lecturerId) throws IOException {
+        List<CourseResponse> courses = courseService.searchCourses(className, subjectCode, semester, lecturerName, lecturerId);
         return ResponseEntity.ok(ApiResponse.ok("Tìm kiếm khóa học thành công", courses));
     }
 
     @GetMapping("/my-courses")
     @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
-    @Operation(summary = "Lấy danh sách khóa học của học sinh", description = "Trả về danh sách các khóa học mà học sinh đã đăng ký tham gia, kèm theo tên giảng viên. Nếu không truyền studentId thì lấy theo người dùng đang đăng nhập.")
+    @Operation(summary = "Lấy danh sách khóa học của học sinh", description = "Trả về danh sách các khóa học mà học sinh đã đăng ký tham gia, kèm theo tên giảng viên và các bộ lọc tùy chọn. Nếu không truyền studentId thì lấy theo người dùng đang đăng nhập.")
     public ResponseEntity<ApiResponse<List<CourseResponse>>> getEnrolledCourses(
             @RequestParam(required = false) String studentId,
+            @RequestParam(required = false) String subjectCode,
+            @RequestParam(required = false) String semester,
+            @RequestParam(required = false) String lecturerName,
             Authentication authentication) throws IOException {
         String targetStudentId = (studentId != null && !studentId.trim().isEmpty())
                 ? studentId.trim()
                 : authentication.getName();
-        List<CourseResponse> courses = courseService.getEnrolledCourses(targetStudentId);
+        List<CourseResponse> courses = courseService.getEnrolledCourses(targetStudentId, subjectCode, semester, lecturerName);
         return ResponseEntity.ok(ApiResponse.ok("Lấy danh sách khóa học của học sinh thành công", courses));
+    }
+
+    @PostMapping(value = "/{courseId}/import-students", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('LECTURER', 'ADMIN')")
+    @Operation(summary = "Import danh sách sinh viên vào khóa học qua Excel", description = "Dành cho Giảng viên tải lên file Excel (.xlsx hoặc .xls) chứa danh sách sinh viên để ghi danh vào lớp học phần")
+    public ResponseEntity<ApiResponse<ImportStudentsResponse>> importStudentsToCourse(
+            @PathVariable String courseId,
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication) throws IOException {
+        ImportStudentsResponse response = courseService.importStudentsToCourse(courseId, file, authentication.getName());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Import danh sách sinh viên vào khóa học thành công", response));
     }
 
     @PostMapping({"/register", "/enroll"})
