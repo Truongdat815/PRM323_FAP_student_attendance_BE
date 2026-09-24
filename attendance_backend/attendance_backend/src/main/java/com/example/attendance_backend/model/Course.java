@@ -34,6 +34,9 @@ public class Course {
     @Column(name = "semester")
     private String semester;
 
+    @Column(name = "password")
+    private String password;
+
     @Column(name = "lecturer_id")
     private String lecturerId;
 
