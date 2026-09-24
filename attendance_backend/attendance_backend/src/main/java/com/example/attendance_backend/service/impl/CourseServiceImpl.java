@@ -1,24 +1,27 @@
 package com.example.attendance_backend.service.impl;
 
+import com.example.attendance_backend.dto.request.CourseRegisterRequest;
 import com.example.attendance_backend.dto.request.CourseRequest;
 import com.example.attendance_backend.dto.response.CourseResponse;
 import com.example.attendance_backend.exception.AppException;
 import com.example.attendance_backend.model.Course;
+import com.example.attendance_backend.model.Enrollment;
 import com.example.attendance_backend.model.User;
 import com.example.attendance_backend.repository.CourseRepository;
+import com.example.attendance_backend.repository.EnrollmentRepository;
 import com.example.attendance_backend.repository.UserRepository;
 import com.example.attendance_backend.service.CourseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -31,11 +34,22 @@ public class CourseServiceImpl implements CourseService {
 
     private final CourseRepository courseRepository;
     private final UserRepository userRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Autowired
-    public CourseServiceImpl(CourseRepository courseRepository, UserRepository userRepository) {
+    public CourseServiceImpl(CourseRepository courseRepository,
+                             UserRepository userRepository,
+                             EnrollmentRepository enrollmentRepository,
+                             PasswordEncoder passwordEncoder) {
         this.courseRepository = courseRepository;
         this.userRepository = userRepository;
+        this.enrollmentRepository = enrollmentRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    public CourseServiceImpl(CourseRepository courseRepository, UserRepository userRepository) {
+        this(courseRepository, userRepository, null, null);
     }
 
     @Override
@@ -80,6 +94,7 @@ public class CourseServiceImpl implements CourseService {
                 .className(request.getClassName().trim().toUpperCase())
                 .semester(request.getSemester().trim().toUpperCase())
                 .lecturerId(lecturerId)
+                .password(passwordEncoder.encode(request.getPassword().trim()))
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -129,6 +144,140 @@ public class CourseServiceImpl implements CourseService {
         courseRepository.delete(existingCourse);
 
         log.info("✅ Giảng viên '{}' đã xóa khóa học: courseId={}", currentUsername, courseId);
+    }
+
+    @Override
+    public CourseResponse registerCourse(CourseRegisterRequest request, String currentUsername) throws IOException {
+        String targetUserId = (request.getUserId() != null && !request.getUserId().trim().isEmpty())
+                ? request.getUserId().trim()
+                : currentUsername;
+
+        User student = userRepository.findById(targetUserId)
+                .or(() -> userRepository.findByUsername(targetUserId))
+                .or(() -> userRepository.findByFapCode(targetUserId))
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy học sinh với mã: " + targetUserId));
+
+        // Kiểm tra vai trò: Chỉ sinh viên (hoặc admin) mới được đăng ký
+        String role = student.getRoleId();
+        boolean isStudent = role != null && (role.equalsIgnoreCase("STUDENT") || role.equalsIgnoreCase("ROLE_STUDENT"));
+        boolean isAdmin = role != null && (role.equalsIgnoreCase("ADMIN") || role.equalsIgnoreCase("ROLE_ADMIN"));
+        if (!isStudent && !isAdmin) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Chỉ tài khoản sinh viên mới có quyền đăng ký khóa học.");
+        }
+
+        String courseId = request.getCourseId() != null ? request.getCourseId().trim() : "";
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy khóa học với mã: " + courseId));
+
+        // Kiểm tra mật khẩu khóa học (nếu khóa học có thiết lập mật khẩu)
+        if (course.getPassword() != null && !course.getPassword().trim().isEmpty()) {
+            String expectedPassword = course.getPassword().trim();
+            String providedPassword = (request.getCoursePassword() != null) ? request.getCoursePassword().trim() : "";
+
+            boolean matches = expectedPassword.equals(providedPassword);
+            if (!matches && passwordEncoder != null) {
+                matches = passwordEncoder.matches(providedPassword, expectedPassword);
+            }
+
+            if (!matches) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "Mật khẩu khóa học không chính xác.");
+            }
+        }
+
+        // Kiểm tra đăng ký trùng lặp
+        if (enrollmentRepository.existsByCourseIdAndStudentId(course.getCourseId(), student.getUserId())) {
+            throw new AppException(HttpStatus.CONFLICT, "Học sinh đã đăng ký tham gia khóa học này trước đó.");
+        }
+
+        // Tạo bản ghi Enrollment
+        String enrollmentId = "ENR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        Enrollment enrollment = Enrollment.builder()
+                .enrollmentId(enrollmentId)
+                .courseId(course.getCourseId())
+                .studentId(student.getUserId())
+                .enrolledAt(LocalDateTime.now())
+                .build();
+        enrollmentRepository.save(enrollment);
+
+        log.info("✅ Học sinh '{}' (userId={}) đăng ký thành công khóa học: courseId={}, className={}",
+                student.getUsername(), student.getUserId(), course.getCourseId(), course.getClassName());
+
+        // Lấy tên giảng viên nếu có
+        String lecturerName = null;
+        if (course.getLecturerId() != null) {
+            lecturerName = userRepository.findById(course.getLecturerId())
+                    .map(User::getFullName)
+                    .orElse(null);
+        }
+
+        return CourseResponse.fromCourse(course, lecturerName);
+    }
+
+    @Override
+    public List<CourseResponse> searchCourses(String className, String subjectCode, String semester, String lecturerName) throws IOException {
+        String cleanClassName = (className != null && !className.trim().isEmpty()) ? className.trim() : null;
+        String cleanSubjectCode = (subjectCode != null && !subjectCode.trim().isEmpty()) ? subjectCode.trim() : null;
+        String cleanSemester = (semester != null && !semester.trim().isEmpty()) ? semester.trim() : null;
+        String cleanLecturerName = (lecturerName != null && !lecturerName.trim().isEmpty()) ? lecturerName.trim() : null;
+
+        List<Course> courses = courseRepository.searchCourses(cleanClassName, cleanSubjectCode, cleanSemester, cleanLecturerName);
+
+        Set<String> lecturerIds = courses.stream()
+                .map(Course::getLecturerId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<String, String> lecturerMap = new HashMap<>();
+        if (!lecturerIds.isEmpty()) {
+            lecturerMap = userRepository.findAllById(lecturerIds).stream()
+                    .collect(Collectors.toMap(User::getUserId, User::getFullName, (oldVal, newVal) -> oldVal));
+        }
+
+        Map<String, String> finalLecturerMap = lecturerMap;
+        return courses.stream()
+                .map(c -> CourseResponse.fromCourse(c, finalLecturerMap.get(c.getLecturerId())))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<CourseResponse> getEnrolledCourses(String studentId) throws IOException {
+        // Tìm học sinh
+        User student = userRepository.findById(studentId)
+                .or(() -> userRepository.findByUsername(studentId))
+                .or(() -> userRepository.findByFapCode(studentId))
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy học sinh với mã: " + studentId));
+
+        // Lấy danh sách enrollment của học sinh
+        List<Enrollment> enrollments = enrollmentRepository.findByStudentId(student.getUserId());
+        if (enrollments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Lấy danh sách courseId từ enrollments
+        List<String> courseIds = enrollments.stream()
+                .map(Enrollment::getCourseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        // Batch-fetch tất cả courses
+        List<Course> courses = courseRepository.findAllById(courseIds);
+
+        // Batch-fetch tất cả tên giảng viên
+        Set<String> lecturerIds = courses.stream()
+                .map(Course::getLecturerId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<String, String> lecturerMap = new HashMap<>();
+        if (!lecturerIds.isEmpty()) {
+            lecturerMap = userRepository.findAllById(lecturerIds).stream()
+                    .collect(Collectors.toMap(User::getUserId, User::getFullName, (oldVal, newVal) -> oldVal));
+        }
+
+        Map<String, String> finalLecturerMap = lecturerMap;
+        return courses.stream()
+                .map(c -> CourseResponse.fromCourse(c, finalLecturerMap.get(c.getLecturerId())))
+                .collect(Collectors.toList());
     }
 
     private User getCurrentUser(String username) throws IOException {

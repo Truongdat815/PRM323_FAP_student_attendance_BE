@@ -34,6 +34,12 @@ class CourseServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.example.attendance_backend.repository.EnrollmentRepository enrollmentRepository;
+
+    @Mock
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
     private CourseService courseService;
 
     private User lecturer;
@@ -43,23 +49,26 @@ class CourseServiceTest {
 
     @BeforeEach
     void setUp() {
-        courseService = new CourseServiceImpl(courseRepository, userRepository);
+        courseService = new CourseServiceImpl(courseRepository, userRepository, enrollmentRepository, passwordEncoder);
 
         lecturer = User.builder()
                 .userId("USR-LEC1")
                 .username("teacher1")
+                .fullName("Nguyễn Văn A")
                 .roleId("ROLE_LECTURER")
                 .build();
 
         otherLecturer = User.builder()
                 .userId("USR-LEC2")
                 .username("teacher2")
+                .fullName("Trần Thị B")
                 .roleId("ROLE_LECTURER")
                 .build();
 
         student = User.builder()
                 .userId("USR-STU1")
                 .username("student1")
+                .fullName("Lê Văn C")
                 .roleId("ROLE_STUDENT")
                 .build();
 
@@ -68,6 +77,7 @@ class CourseServiceTest {
                 .subjectCode("PRM392")
                 .className("SE1701")
                 .semester("FA24")
+                .password("secret123")
                 .lecturerId("USR-LEC1")
                 .createdAt(LocalDateTime.of(2026, 9, 16, 0, 0, 0))
                 .build();
@@ -192,5 +202,77 @@ class CourseServiceTest {
         AppException ex = assertThrows(AppException.class, () -> courseService.deleteCourse("CRS-001", "teacher2"));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
         verify(courseRepository, never()).delete(any(Course.class));
+    }
+
+    @Test
+    void testRegisterCourseSuccess_WithPassword() throws IOException {
+        com.example.attendance_backend.dto.request.CourseRegisterRequest request =
+                com.example.attendance_backend.dto.request.CourseRegisterRequest.builder()
+                        .courseId("CRS-001")
+                        .userId("USR-STU1")
+                        .coursePassword("secret123")
+                        .build();
+
+        when(userRepository.findById("USR-STU1")).thenReturn(Optional.of(student));
+        when(courseRepository.findById("CRS-001")).thenReturn(Optional.of(sampleCourse));
+        when(enrollmentRepository.existsByCourseIdAndStudentId("CRS-001", "USR-STU1")).thenReturn(false);
+        when(userRepository.findById("USR-LEC1")).thenReturn(Optional.of(lecturer));
+
+        CourseResponse response = courseService.registerCourse(request, "student1");
+
+        assertNotNull(response);
+        assertEquals("CRS-001", response.getCourseId());
+        assertEquals("PRM392", response.getSubjectCode());
+        assertEquals("Nguyễn Văn A", response.getLecturerName());
+        verify(enrollmentRepository, times(1)).save(any(com.example.attendance_backend.model.Enrollment.class));
+    }
+
+    @Test
+    void testRegisterCourseWrongPassword() throws IOException {
+        com.example.attendance_backend.dto.request.CourseRegisterRequest request =
+                com.example.attendance_backend.dto.request.CourseRegisterRequest.builder()
+                        .courseId("CRS-001")
+                        .userId("USR-STU1")
+                        .coursePassword("wrongpassword")
+                        .build();
+
+        when(userRepository.findById("USR-STU1")).thenReturn(Optional.of(student));
+        when(courseRepository.findById("CRS-001")).thenReturn(Optional.of(sampleCourse));
+
+        AppException ex = assertThrows(AppException.class, () -> courseService.registerCourse(request, "student1"));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        verify(enrollmentRepository, never()).save(any());
+    }
+
+    @Test
+    void testRegisterCourseAlreadyEnrolled() throws IOException {
+        com.example.attendance_backend.dto.request.CourseRegisterRequest request =
+                com.example.attendance_backend.dto.request.CourseRegisterRequest.builder()
+                        .courseId("CRS-001")
+                        .userId("USR-STU1")
+                        .coursePassword("secret123")
+                        .build();
+
+        when(userRepository.findById("USR-STU1")).thenReturn(Optional.of(student));
+        when(courseRepository.findById("CRS-001")).thenReturn(Optional.of(sampleCourse));
+        when(enrollmentRepository.existsByCourseIdAndStudentId("CRS-001", "USR-STU1")).thenReturn(true);
+
+        AppException ex = assertThrows(AppException.class, () -> courseService.registerCourse(request, "student1"));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        verify(enrollmentRepository, never()).save(any());
+    }
+
+    @Test
+    void testSearchCoursesSuccess() throws IOException {
+        when(courseRepository.searchCourses("SE1701", "PRM392", "FA24", "Nguyễn"))
+                .thenReturn(List.of(sampleCourse));
+        when(userRepository.findAllById(any())).thenReturn(List.of(lecturer));
+
+        List<CourseResponse> responses = courseService.searchCourses("SE1701", "PRM392", "FA24", "Nguyễn");
+
+        assertNotNull(responses);
+        assertEquals(1, responses.size());
+        assertEquals("CRS-001", responses.get(0).getCourseId());
+        assertEquals("Nguyễn Văn A", responses.get(0).getLecturerName());
     }
 }

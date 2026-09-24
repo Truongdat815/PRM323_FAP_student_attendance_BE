@@ -24,6 +24,7 @@ public class CourseRequest {
     @NotBlank(message = "Học kỳ không được để trống (ví dụ: FA24, SP25)")
     private String semester;
 
+    private String password;
     /**
      * ID của giảng viên (nếu bỏ trống, hệ thống sẽ tự động lấy từ giảng viên đang đăng nhập).
      */

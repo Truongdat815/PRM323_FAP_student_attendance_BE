@@ -1,5 +1,6 @@
 package com.example.attendance_backend.controller;
 
+import com.example.attendance_backend.dto.request.CourseRegisterRequest;
 import com.example.attendance_backend.dto.request.CourseRequest;
 import com.example.attendance_backend.dto.response.ApiResponse;
 import com.example.attendance_backend.dto.response.CourseResponse;
@@ -40,6 +41,40 @@ public class CourseController {
             @RequestParam(required = false) String lecturerId) throws IOException {
         List<CourseResponse> courses = courseService.getAllCourses(lecturerId);
         return ResponseEntity.ok(ApiResponse.ok("Lấy danh sách khóa học thành công", courses));
+    }
+
+    @GetMapping("/search")
+    @Operation(summary = "Tìm kiếm khóa học", description = "Tìm kiếm khóa học theo className, subjectCode, semester và tên của giảng viên (các tiêu chí đều là tùy chọn và có thể kết hợp)")
+    public ResponseEntity<ApiResponse<List<CourseResponse>>> searchCourses(
+            @RequestParam(required = false) String className,
+            @RequestParam(required = false) String subjectCode,
+            @RequestParam(required = false) String semester,
+            @RequestParam(required = false) String lecturerName) throws IOException {
+        List<CourseResponse> courses = courseService.searchCourses(className, subjectCode, semester, lecturerName);
+        return ResponseEntity.ok(ApiResponse.ok("Tìm kiếm khóa học thành công", courses));
+    }
+
+    @GetMapping("/my-courses")
+    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
+    @Operation(summary = "Lấy danh sách khóa học của học sinh", description = "Trả về danh sách các khóa học mà học sinh đã đăng ký tham gia, kèm theo tên giảng viên. Nếu không truyền studentId thì lấy theo người dùng đang đăng nhập.")
+    public ResponseEntity<ApiResponse<List<CourseResponse>>> getEnrolledCourses(
+            @RequestParam(required = false) String studentId,
+            Authentication authentication) throws IOException {
+        String targetStudentId = (studentId != null && !studentId.trim().isEmpty())
+                ? studentId.trim()
+                : authentication.getName();
+        List<CourseResponse> courses = courseService.getEnrolledCourses(targetStudentId);
+        return ResponseEntity.ok(ApiResponse.ok("Lấy danh sách khóa học của học sinh thành công", courses));
+    }
+
+    @PostMapping({"/register", "/enroll"})
+    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
+    @Operation(summary = "Học sinh đăng ký khóa học", description = "Học sinh đăng ký tham gia khóa học bằng mã khóa học (courseId), mã học sinh (userId) và mật khẩu khóa học (coursePassword)")
+    public ResponseEntity<ApiResponse<CourseResponse>> registerCourse(
+            @Valid @RequestBody CourseRegisterRequest request,
+            Authentication authentication) throws IOException {
+        CourseResponse response = courseService.registerCourse(request, authentication.getName());
+        return ResponseEntity.ok(ApiResponse.ok("Đăng ký khóa học thành công", response));
     }
 
     @GetMapping("/{id}")
