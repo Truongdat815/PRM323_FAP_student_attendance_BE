@@ -38,6 +38,9 @@ public class AttendanceSession {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "session_code")
+    private String sessionCode;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

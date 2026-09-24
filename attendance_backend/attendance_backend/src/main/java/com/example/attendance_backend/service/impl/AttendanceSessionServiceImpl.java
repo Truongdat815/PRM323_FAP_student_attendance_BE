@@ -60,6 +60,7 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
         }
 
         String sessionId = "SES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String sessionCode = String.format("%06d", new java.util.Random().nextInt(1000000));
         String qrSecret = QRCodeGenerator.generateSecret();
         String qrBase64 = QRCodeGenerator.generateQRCodeBase64(qrSecret, 250, 250);
 
@@ -68,6 +69,7 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
                 .courseId(course.getCourseId())
                 .slotNumber(request.getSlotNumber())
                 .qrCodeSecret(qrSecret)
+                .sessionCode(sessionCode)
                 .roomNetworkIp(request.getRoomNetworkIp() != null ? request.getRoomNetworkIp().trim() : "")
                 .expiredAt(request.getExpiredAt())
                 .status("ACTIVE")
@@ -75,7 +77,7 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
                 .build();
 
         attendanceSessionRepository.save(session);
-        syncLogService.logSync("CREATE_SESSION", "SUCCESS", "Created session " + sessionId + " for course " + course.getCourseId());
+        syncLogService.logSync("CREATE_SESSION", "SUCCESS", "Created session " + sessionId + " (code: " + sessionCode + ") for course " + course.getCourseId());
 
         return mapToResponse(session, qrBase64);
     }
@@ -133,6 +135,7 @@ public class AttendanceSessionServiceImpl implements AttendanceSessionService {
                 .qrCodeBase64(qrBase64)
                 .roomNetworkIp(session.getRoomNetworkIp())
                 .expiredAt(session.getExpiredAt())
+                .sessionCode(session.getSessionCode())
                 .status(session.getStatus())
                 .createdAt(session.getCreatedAt())
                 .build();

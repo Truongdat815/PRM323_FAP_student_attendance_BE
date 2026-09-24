@@ -1,17 +1,23 @@
 package com.example.attendance_backend.service.impl;
 
 import com.example.attendance_backend.dto.request.CheckInRequest;
+import com.example.attendance_backend.dto.response.AttendanceHistoryResponse;
 import com.example.attendance_backend.dto.response.AttendanceRecordResponse;
 import com.example.attendance_backend.exception.AppException;
 import com.example.attendance_backend.model.AttendanceRecord;
 import com.example.attendance_backend.model.AttendanceSession;
+import com.example.attendance_backend.model.Course;
+import com.example.attendance_backend.model.Enrollment;
 import com.example.attendance_backend.model.User;
 import com.example.attendance_backend.repository.AttendanceRecordRepository;
 import com.example.attendance_backend.repository.AttendanceSessionRepository;
+import com.example.attendance_backend.repository.CourseRepository;
 import com.example.attendance_backend.repository.EnrollmentRepository;
 import com.example.attendance_backend.repository.UserRepository;
 import com.example.attendance_backend.service.AttendanceRecordService;
 import com.example.attendance_backend.service.SyncLogService;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,11 +25,10 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,6 +36,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
 
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceSessionRepository attendanceSessionRepository;
+    private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
     private final SyncLogService syncLogService;
@@ -40,14 +46,24 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     @Autowired
     public AttendanceRecordServiceImpl(AttendanceRecordRepository attendanceRecordRepository,
                                        AttendanceSessionRepository attendanceSessionRepository,
+                                       CourseRepository courseRepository,
                                        EnrollmentRepository enrollmentRepository,
                                        UserRepository userRepository,
                                        SyncLogService syncLogService) {
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
+        this.courseRepository = courseRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.syncLogService = syncLogService;
+    }
+
+    public AttendanceRecordServiceImpl(AttendanceRecordRepository attendanceRecordRepository,
+                                       AttendanceSessionRepository attendanceSessionRepository,
+                                       EnrollmentRepository enrollmentRepository,
+                                       UserRepository userRepository,
+                                       SyncLogService syncLogService) {
+        this(attendanceRecordRepository, attendanceSessionRepository, null, enrollmentRepository, userRepository, syncLogService);
     }
 
     @Override
@@ -55,24 +71,58 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         User student = userRepository.findByUsername(currentUsername)
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Không tìm thấy thông tin sinh viên."));
 
-        AttendanceSession session = attendanceSessionRepository.findById(request.getSessionId())
-                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Phiên điểm danh không tồn tại: " + request.getSessionId()));
+        // Yêu cầu ít nhất một trong hai trường qrCodeSecret hoặc sessionCode phải có giá trị
+        boolean hasQr = request.getQrCodeSecret() != null && !request.getQrCodeSecret().trim().isEmpty();
+        boolean hasPin = request.getSessionCode() != null && !request.getSessionCode().trim().isEmpty();
 
-        if (!"ACTIVE".equalsIgnoreCase(session.getStatus())) {
-            syncLogService.logSync("CHECK_IN", "FAILED", "Session " + request.getSessionId() + " is not ACTIVE for student " + student.getUserId());
-            throw new AppException(HttpStatus.BAD_REQUEST, "Phiên điểm danh hiện không ở trạng thái hoạt động (ACTIVE).");
+        if (!hasQr && !hasPin) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Vui lòng cung cấp mã QR (qrCodeSecret) hoặc mã PIN buổi học (sessionCode).");
+        }
+
+        AttendanceSession session;
+        if (request.getSessionId() != null && !request.getSessionId().trim().isEmpty()) {
+            session = attendanceSessionRepository.findById(request.getSessionId().trim())
+                    .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Phiên điểm danh không tồn tại: " + request.getSessionId()));
+        } else if (hasPin) {
+            String code = request.getSessionCode().trim();
+            List<AttendanceSession> activeSessions = attendanceSessionRepository.findBySessionCodeAndStatus(code, "ACTIVE");
+            if (activeSessions.isEmpty()) {
+                activeSessions = attendanceSessionRepository.findBySessionCodeAndStatus(code, "OPEN");
+            }
+            if (activeSessions.isEmpty()) {
+                throw new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên điểm danh đang mở với mã: " + code);
+            }
+            if (activeSessions.size() > 1) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "Có nhiều hơn 1 phiên điểm danh đang mở với mã code này. Vui lòng cung cấp thêm sessionId.");
+            }
+            session = activeSessions.get(0);
+        } else {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Thiếu thông tin phiên điểm danh (sessionId).");
+        }
+
+        if (!"ACTIVE".equalsIgnoreCase(session.getStatus()) && !"OPEN".equalsIgnoreCase(session.getStatus())) {
+            syncLogService.logSync("CHECK_IN", "FAILED", "Session " + session.getSessionId() + " is not ACTIVE for student " + student.getUserId());
+            throw new AppException(HttpStatus.BAD_REQUEST, "Phiên điểm danh hiện không ở trạng thái hoạt động.");
         }
 
         if (isExpired(session.getExpiredAt())) {
             session.setStatus("CLOSED");
             attendanceSessionRepository.save(session);
-            syncLogService.logSync("CHECK_IN", "FAILED", "Session " + request.getSessionId() + " has expired. Auto-closing.");
+            syncLogService.logSync("CHECK_IN", "FAILED", "Session " + session.getSessionId() + " has expired. Auto-closing.");
             throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR / Phiên điểm danh đã hết hạn.");
         }
 
-        if (request.getQrCodeSecret() == null || !request.getQrCodeSecret().trim().equals(session.getQrCodeSecret())) {
-            syncLogService.logSync("CHECK_IN", "FAILED", "Invalid QR code secret for session " + request.getSessionId());
-            throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR không hợp lệ hoặc đã hết hạn.");
+        // Kiểm tra tính hợp lệ của PIN code hoặc QR secret
+        if (hasPin) {
+            if (session.getSessionCode() == null || !session.getSessionCode().trim().equals(request.getSessionCode().trim())) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "Invalid sessionCode for session " + session.getSessionId());
+                throw new AppException(HttpStatus.BAD_REQUEST, "Mã PIN điểm danh (sessionCode) không chính xác.");
+            }
+        } else {
+            if (session.getQrCodeSecret() == null || !session.getQrCodeSecret().trim().equals(request.getQrCodeSecret().trim())) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "Invalid QR code secret for session " + session.getSessionId());
+                throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR không hợp lệ hoặc đã hết hạn.");
+            }
         }
 
         boolean isEnrolled = enrollmentRepository.existsByCourseIdAndStudentId(session.getCourseId(), student.getUserId());
@@ -83,21 +133,20 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
 
         boolean alreadyCheckedIn = attendanceRecordRepository.existsBySessionIdAndStudentId(session.getSessionId(), student.getUserId());
         if (alreadyCheckedIn) {
-            syncLogService.logSync("CHECK_IN", "FAILED", "Student " + student.getUserId() + " already checked in session " + request.getSessionId());
+            syncLogService.logSync("CHECK_IN", "FAILED", "Student " + student.getUserId() + " already checked in session " + session.getSessionId());
             throw new AppException(HttpStatus.BAD_REQUEST, "Sinh viên đã thực hiện điểm danh cho buổi học này trước đó.");
         }
 
+        // Kiểm tra địa chỉ IP mạng Wi-Fi phòng học
         if (session.getRoomNetworkIp() != null && !session.getRoomNetworkIp().trim().isEmpty()) {
             String requiredIp = session.getRoomNetworkIp().trim();
             String effectiveClientIp = (request.getClientIp() != null && !request.getClientIp().trim().isEmpty())
                     ? request.getClientIp().trim()
                     : clientIp;
 
-            if (effectiveClientIp != null && !effectiveClientIp.isEmpty() && !"127.0.0.1".equals(effectiveClientIp) && !"::1".equals(effectiveClientIp)) {
-                if (!effectiveClientIp.equals(requiredIp) && !effectiveClientIp.startsWith(requiredIp)) {
-                    syncLogService.logSync("CHECK_IN", "FAILED", "IP mismatch. Client: " + effectiveClientIp + ", Required: " + requiredIp);
-                    throw new AppException(HttpStatus.FORBIDDEN, "Địa chỉ IP mạng của thiết bị không khớp với mạng phòng học.");
-                }
+            if (!isNetworkMatching(effectiveClientIp, requiredIp)) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "IP mismatch. Client: " + effectiveClientIp + ", Required: " + requiredIp);
+                throw new AppException(HttpStatus.BAD_REQUEST, "Thiết bị không kết nối đúng mạng Wi-Fi phòng học yêu cầu.");
             }
         }
 
@@ -169,6 +218,186 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         syncLogService.logSync("EXPORT_CSV", "SUCCESS", "Exported CSV for session " + sessionId);
         out.write(csv.toString().getBytes(StandardCharsets.UTF_8));
         return out.toByteArray();
+    }
+
+    @Override
+    public List<AttendanceHistoryResponse> getMyAttendanceHistory(String currentUsername, String courseId, String subjectCode, LocalDate startDate, LocalDate endDate) throws IOException {
+        User student = userRepository.findByUsername(currentUsername)
+                .or(() -> userRepository.findById(currentUsername))
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Không tìm thấy thông tin sinh viên."));
+
+        List<AttendanceRecord> records = attendanceRecordRepository.findByStudentId(student.getUserId());
+
+        // Sắp xếp thời gian mới nhất lên đầu
+        records.sort((r1, r2) -> {
+            if (r1.getCheckedAt() == null || r2.getCheckedAt() == null) return 0;
+            return r2.getCheckedAt().compareTo(r1.getCheckedAt());
+        });
+
+        // Batch load các session và course tương ứng
+        List<String> sessionIds = records.stream().map(AttendanceRecord::getSessionId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<String, AttendanceSession> sessionMap = attendanceSessionRepository.findAllById(sessionIds).stream()
+                .collect(Collectors.toMap(AttendanceSession::getSessionId, s -> s));
+
+        List<String> courseIds = sessionMap.values().stream().map(AttendanceSession::getCourseId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<String, Course> courseMap = courseRepository.findAllById(courseIds).stream()
+                .collect(Collectors.toMap(Course::getCourseId, c -> c));
+
+        return records.stream()
+                .map(record -> {
+                    AttendanceSession session = sessionMap.get(record.getSessionId());
+                    Course course = (session != null) ? courseMap.get(session.getCourseId()) : null;
+
+                    // Lọc theo courseId
+                    if (courseId != null && !courseId.trim().isEmpty()) {
+                        if (course == null || !course.getCourseId().equalsIgnoreCase(courseId.trim())) {
+                            return null;
+                        }
+                    }
+
+                    // Lọc theo subjectCode
+                    if (subjectCode != null && !subjectCode.trim().isEmpty()) {
+                        if (course == null || course.getSubjectCode() == null || !course.getSubjectCode().equalsIgnoreCase(subjectCode.trim())) {
+                            return null;
+                        }
+                    }
+
+                    // Lọc theo startDate
+                    if (startDate != null && record.getCheckedAt() != null) {
+                        if (record.getCheckedAt().toLocalDate().isBefore(startDate)) {
+                            return null;
+                        }
+                    }
+
+                    // Lọc theo endDate
+                    if (endDate != null && record.getCheckedAt() != null) {
+                        if (record.getCheckedAt().toLocalDate().isAfter(endDate)) {
+                            return null;
+                        }
+                    }
+
+                    return AttendanceHistoryResponse.builder()
+                            .recordId(record.getRecordId())
+                            .courseId(course != null ? course.getCourseId() : (session != null ? session.getCourseId() : null))
+                            .subjectCode(course != null ? course.getSubjectCode() : null)
+                            .className(course != null ? course.getClassName() : null)
+                            .slotNumber(session != null ? session.getSlotNumber() : null)
+                            .checkedAt(record.getCheckedAt())
+                            .status(record.getStatus())
+                            .build();
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public byte[] exportAttendanceToExcel(String sessionId) throws IOException {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy buổi điểm danh với mã: " + sessionId));
+
+        Course course = courseRepository.findById(session.getCourseId()).orElse(null);
+
+        // Lấy danh sách 100% sinh viên đã đăng ký khóa học
+        List<Enrollment> enrollments = enrollmentRepository.findByCourseId(session.getCourseId());
+
+        // Lấy danh sách các bản ghi điểm danh thực tế
+        List<AttendanceRecord> records = attendanceRecordRepository.findBySessionId(sessionId);
+        Map<String, AttendanceRecord> recordMap = records.stream()
+                .collect(Collectors.toMap(AttendanceRecord::getStudentId, r -> r, (r1, r2) -> r1));
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            String sheetTitle = "Attendance_" + (course != null && course.getClassName() != null ? course.getClassName() : "Session");
+            Sheet sheet = workbook.createSheet(sheetTitle);
+
+            // Tạo Header Style
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            // Viết dòng Header
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"STT", "Mã sinh viên", "Họ và tên", "Trạng thái", "Thời gian điểm danh"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowIdx = 1;
+            for (Enrollment enrollment : enrollments) {
+                User student = userRepository.findById(enrollment.getStudentId()).orElse(null);
+                AttendanceRecord record = recordMap.get(enrollment.getStudentId());
+
+                Row row = sheet.createRow(rowIdx);
+                row.createCell(0).setCellValue(rowIdx);
+
+                String fapCode = (student != null && student.getFapCode() != null)
+                        ? student.getFapCode()
+                        : (student != null ? student.getUsername() : enrollment.getStudentId());
+                row.createCell(1).setCellValue(fapCode);
+
+                String fullName = (student != null && student.getFullName() != null)
+                        ? student.getFullName()
+                        : "";
+                row.createCell(2).setCellValue(fullName);
+
+                Cell statusCell = row.createCell(3);
+                Cell timeCell = row.createCell(4);
+
+                if (record != null) {
+                    statusCell.setCellValue("PRESENT");
+                    timeCell.setCellValue(record.getCheckedAt() != null ? record.getCheckedAt().format(FORMATTER) : "");
+                } else {
+                    statusCell.setCellValue("ABSENT");
+                    timeCell.setCellValue("");
+                }
+
+                rowIdx++;
+            }
+
+            // Tự động căn chỉnh độ rộng cột
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(out);
+            syncLogService.logSync("EXPORT_EXCEL", "SUCCESS", "Exported Excel attendance for session " + sessionId);
+            return out.toByteArray();
+        }
+    }
+
+    private boolean isNetworkMatching(String clientIp, String requiredIp) {
+        if (clientIp == null || clientIp.trim().isEmpty() ||
+                "127.0.0.1".equals(clientIp) || "0:0:0:0:0:0:0:1".equals(clientIp) || "::1".equals(clientIp)) {
+            return true; // Chấp nhận localhost cho kiểm thử và môi trường phát triển
+        }
+
+        String cIp = clientIp.trim();
+        String rIp = requiredIp.trim();
+
+        if (cIp.equalsIgnoreCase(rIp)) {
+            return true;
+        }
+
+        if (rIp.contains("/")) {
+            String base = rIp.substring(0, rIp.indexOf('/'));
+            int lastDot = base.lastIndexOf('.');
+            if (lastDot > 0) {
+                return cIp.startsWith(base.substring(0, lastDot + 1));
+            }
+        }
+
+        if (rIp.endsWith(".0")) {
+            String prefix = rIp.substring(0, rIp.length() - 1);
+            return cIp.startsWith(prefix);
+        }
+
+        return cIp.startsWith(rIp);
     }
 
     private boolean isExpired(LocalDateTime expiredAt) {

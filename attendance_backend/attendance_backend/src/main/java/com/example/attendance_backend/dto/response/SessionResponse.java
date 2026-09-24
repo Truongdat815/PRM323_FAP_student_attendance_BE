@@ -20,6 +20,7 @@ public class SessionResponse {
     private String qrCodeBase64;
     private String roomNetworkIp;
     private LocalDateTime expiredAt;
+    private String sessionCode;
     private String status;
     private LocalDateTime createdAt;
 }

@@ -1,22 +1,24 @@
 package com.example.attendance_backend.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * DTO nhận yêu cầu điểm danh từ sinh viên (qua mã QR hoặc mã PIN sessionCode 6 số).
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CheckInRequest {
 
-    @NotBlank(message = "Session ID không được để trống")
     private String sessionId;
 
-    @NotBlank(message = "Mã QR secret không được để trống")
     private String qrCodeSecret;
+
+    private String sessionCode;
 
     private String clientIp;
 }
