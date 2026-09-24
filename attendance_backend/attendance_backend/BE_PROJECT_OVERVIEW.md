@@ -8,17 +8,18 @@
 
 **FAP Student Attendance System** là hệ thống backend RESTful API phục vụ việc điểm danh sinh viên tại trường Đại học FPT. Hệ thống hỗ trợ:
 
-- **Giảng viên** tạo buổi học, sinh mã QR điểm danh, quản lý khóa học và theo dõi sinh viên.
-- **Sinh viên** tìm kiếm khóa học, đăng ký khóa học (với mật khẩu nếu có), quét mã QR để điểm danh.
+- **Giảng viên** tạo buổi học, sinh mã QR điểm danh, quản lý khóa học (thiết lập mật khẩu bảo vệ lớp học) và theo dõi sinh viên.
+- **Sinh viên** tìm kiếm khóa học linh hoạt (theo tên lớp, môn học, học kỳ, tên giảng viên), đăng ký khóa học (với mật khẩu nếu có), xem danh sách các khóa học mình tham gia (kèm tên giảng viên), quét mã QR để điểm danh.
 - **Admin** quản lý toàn bộ hệ thống, import dữ liệu từ file Excel.
 
 ### Quy trình nghiệp vụ chính
 
 ```
 Giảng viên tạo khóa học (hỗ trợ đặt mật khẩu) → Sinh viên tìm kiếm & đăng ký khóa học
-    → Giảng viên tạo buổi điểm danh (sinh QR Code)
-        → Sinh viên quét QR để điểm danh
-            → Xuất báo cáo CSV / Đồng bộ Google Sheets
+    → Sinh viên xem danh sách khóa học tham gia (kèm tên giảng viên)
+        → Giảng viên tạo buổi điểm danh (sinh QR Code)
+            → Sinh viên quét QR để điểm danh
+                → Xuất báo cáo CSV / Đồng bộ Google Sheets
 ```
 
 ---
@@ -60,7 +61,7 @@ attendance_backend/
         │   │
         │   ├── controller/                         # 🎯 REST API Controllers
         │   │   ├── AuthController.java             # Đăng ký / Đăng nhập
-        │   │   ├── CourseController.java           # Quản lý, tìm kiếm & đăng ký khóa học
+        │   │   ├── CourseController.java           # Quản lý, tìm kiếm, đăng ký & lấy danh sách khóa học tham gia
         │   │   ├── EnrollmentController.java       # Đăng ký khóa học & danh sách lớp
         │   │   ├── AttendanceSessionController.java # Quản lý buổi điểm danh
         │   │   ├── AttendanceController.java       # Điểm danh & xuất CSV
@@ -71,8 +72,8 @@ attendance_backend/
         │   │   ├── request/                        # Input DTOs (Client → Server)
         │   │   │   ├── LoginRequest.java
         │   │   │   ├── RegisterRequest.java
-        │   │   │   ├── CourseRequest.java
-        │   │   │   ├── CourseRegisterRequest.java   # Đăng ký khóa học (courseId, userId, password)
+        │   │   │   ├── CourseRequest.java          # Tạo/cập nhật khóa học (hỗ trợ mật khẩu)
+        │   │   │   ├── CourseRegisterRequest.java   # Đăng ký khóa học (courseId, userId, coursePassword)
         │   │   │   ├── EnrollmentRequest.java
         │   │   │   ├── SessionCreateRequest.java
         │   │   │   └── CheckInRequest.java
@@ -275,8 +276,8 @@ Dự án sử dụng kiến trúc **Layered Architecture** theo chuẩn Spring B
 
 | Vai trò      | Quyền hạn                                                                           |
 |-------------|--------------------------------------------------------------------------------------|
-| `STUDENT`   | Tìm kiếm khóa học, đăng ký khóa học (hỗ trợ mật khẩu), điểm danh qua QR, xem lớp học|
-| `LECTURER`  | Tạo/sửa/xóa khóa học, tạo/đóng buổi điểm danh, xem lịch sử, xuất CSV                |
+| `STUDENT`   | Tìm kiếm khóa học, đăng ký khóa học (hỗ trợ mật khẩu), xem danh sách khóa học tham gia (kèm tên giảng viên), điểm danh qua QR, xem lớp học|
+| `LECTURER`  | Tạo/sửa/xóa khóa học (hỗ trợ đặt mật khẩu bảo vệ), tạo/đóng buổi điểm danh, xem lịch sử, xuất CSV |
 | `ADMIN`     | Toàn quyền (tất cả quyền của STUDENT + LECTURER)                                    |
 
 ### 6.3. Endpoints công khai (Không cần Token)

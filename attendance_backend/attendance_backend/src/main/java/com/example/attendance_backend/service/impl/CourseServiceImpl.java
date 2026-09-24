@@ -86,6 +86,13 @@ public class CourseServiceImpl implements CourseService {
                 ? request.getLecturerId().trim()
                 : currentUser.getUserId();
 
+        String encodedPassword = null;
+        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+            encodedPassword = (passwordEncoder != null)
+                    ? passwordEncoder.encode(request.getPassword().trim())
+                    : request.getPassword().trim();
+        }
+
         String courseId = "CRS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         Course newCourse = Course.builder()
@@ -94,7 +101,7 @@ public class CourseServiceImpl implements CourseService {
                 .className(request.getClassName().trim().toUpperCase())
                 .semester(request.getSemester().trim().toUpperCase())
                 .lecturerId(lecturerId)
-                .password(passwordEncoder.encode(request.getPassword().trim()))
+                .password(encodedPassword)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -121,6 +128,11 @@ public class CourseServiceImpl implements CourseService {
         existingCourse.setSubjectCode(request.getSubjectCode().trim().toUpperCase());
         existingCourse.setClassName(request.getClassName().trim().toUpperCase());
         existingCourse.setSemester(request.getSemester().trim().toUpperCase());
+        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+            existingCourse.setPassword((passwordEncoder != null)
+                    ? passwordEncoder.encode(request.getPassword().trim())
+                    : request.getPassword().trim());
+        }
 
         Course updatedCourse = courseRepository.save(existingCourse);
 

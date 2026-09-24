@@ -189,6 +189,7 @@ curl -X POST http://localhost:8080/api/auth/login \
       "className": "SE1701",
       "semester": "FA24",
       "lecturerId": "l1m2n3o4-p5q6-7890-rstu-vwxyz1234567",
+      "lecturerName": "Nguyễn Văn A",
       "createdAt": "2026-09-20T10:00:00"
     }
   ],
@@ -236,6 +237,7 @@ curl -X GET "http://localhost:8080/api/courses?lecturerId=l1m2n3o4-p5q6-7890-rst
     "className": "SE1701",
     "semester": "FA24",
     "lecturerId": "l1m2n3o4-p5q6-7890-rstu-vwxyz1234567",
+    "lecturerName": "Nguyễn Văn A",
     "createdAt": "2026-09-20T10:00:00"
   },
   "timestamp": "2026-09-23T01:00:00.000Z"
@@ -266,6 +268,7 @@ curl -X GET http://localhost:8080/api/courses/c1d2e3f4-a5b6-7890-cdef-1234567890
 | `subjectCode`| `string` | ✅       | Mã môn học (VD: `PRM392`)                           |
 | `className`  | `string` | ✅       | Tên lớp học phần (VD: `SE1701`)                     |
 | `semester`   | `string` | ✅       | Học kỳ (VD: `FA24`, `SP25`)                         |
+| `password`   | `string` | ❌       | Mật khẩu khóa học (tùy chọn, được băm bảo mật BCrypt)|
 | `lecturerId` | `string` | ❌       | ID giảng viên (nếu bỏ trống = lấy từ user đang login)|
 
 **Response** (`201 Created`):
@@ -280,6 +283,7 @@ curl -X GET http://localhost:8080/api/courses/c1d2e3f4-a5b6-7890-cdef-1234567890
     "className": "SE1701",
     "semester": "FA24",
     "lecturerId": "l1m2n3o4-p5q6-7890-rstu-vwxyz1234567",
+    "lecturerName": null,
     "createdAt": "2026-09-23T08:30:00"
   },
   "timestamp": "2026-09-23T01:30:00.000Z"
@@ -294,7 +298,8 @@ curl -X POST http://localhost:8080/api/courses \
   -d '{
     "subjectCode": "PRM392",
     "className": "SE1701",
-    "semester": "FA24"
+    "semester": "FA24",
+    "password": "secretPassword123"
   }'
 ```
 
@@ -315,14 +320,15 @@ curl -X POST http://localhost:8080/api/courses \
 |-------|----------|-----------------|
 | `id`  | `string` | ID của khóa học |
 
-**Request Body** (`application/json`): *(Giống Create Course)*
+**Request Body** (`application/json`):
 
-| Field         | Type     | Required | Mô tả                       |
-|--------------|----------|----------|------------------------------|
-| `subjectCode`| `string` | ✅       | Mã môn học                   |
-| `className`  | `string` | ✅       | Tên lớp học phần              |
-| `semester`   | `string` | ✅       | Học kỳ                       |
-| `lecturerId` | `string` | ❌       | ID giảng viên                 |
+| Field         | Type     | Required | Mô tả                                               |
+|--------------|----------|----------|------------------------------------------------------|
+| `subjectCode`| `string` | ✅       | Mã môn học                                           |
+| `className`  | `string` | ✅       | Tên lớp học phần                                      |
+| `semester`   | `string` | ✅       | Học kỳ                                               |
+| `password`   | `string` | ❌       | Mật khẩu khóa học mới (nếu muốn thay đổi mật khẩu)   |
+| `lecturerId` | `string` | ❌       | ID giảng viên                                         |
 
 **Response** (`200 OK`):
 
@@ -336,6 +342,7 @@ curl -X POST http://localhost:8080/api/courses \
     "className": "SE1701",
     "semester": "FA24",
     "lecturerId": "l1m2n3o4-p5q6-7890-rstu-vwxyz1234567",
+    "lecturerName": null,
     "createdAt": "2026-09-20T10:00:00"
   },
   "timestamp": "2026-09-23T02:00:00.000Z"
@@ -350,7 +357,8 @@ curl -X PUT http://localhost:8080/api/courses/c1d2e3f4-a5b6-7890-cdef-1234567890
   -d '{
     "subjectCode": "PRM323",
     "className": "SE1701",
-    "semester": "FA24"
+    "semester": "FA24",
+    "password": "newPassword456"
   }'
 ```
 
