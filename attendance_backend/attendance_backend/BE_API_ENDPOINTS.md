@@ -39,6 +39,18 @@ Tất cả API đều trả về dạng `ApiResponse<T>`:
 
 ---
 
+## 🚀 Nhật ký nâng cấp API: Dynamic QR Code TOTP & Xác thực Wi-Fi kép (BSSID + Subnet)
+
+> 🔔 **Dành cho Frontend / Mobile Developers**: Hệ thống đã bổ sung cơ chế chống gian lận đa tầng:
+> 1. **Mã QR động (10s TOTP)**: Mã QR trên máy chiếu tự động đổi mỗi 10 giây. Frontend có thể nhận mã qua polling `GET /api/sessions/{sessionId}/current-token` hoặc stream realtime qua SSE `GET /api/sessions/{sessionId}/qr-stream`.
+> 2. **Sinh viên check-in**: Quét mã QR được chuỗi `qrToken` (8 ký tự Hex, VD: `4F3A8B12`) gửi lên trong `POST /api/attendance/check-in`.
+> 3. **Xác thực Wi-Fi Router (BSSID)**: Mobile app đọc BSSID của Wi-Fi gửi kèm trong `roomBssid` (khi tạo phiên) và `bssid` (khi điểm danh).
+> 4. **Khắc phục Multi-WAN**: Backend tự động so khớp dải Subnet `/24` giữa `client_public_ip` và `host_public_ip`.
+> 5. **Chống điểm danh hộ trên 1 máy**: Gửi kèm `deviceId` trong request điểm danh. Một máy chỉ được điểm danh cho đúng 1 sinh viên/buổi.
+> 6. **Bỏ trường `clientIp`**: Backend tự động đọc IP thực từ socket/proxy header, client không cần gửi `clientIp` nữa.
+
+---
+
 ## 1. 🔐 Authentication Controller
 
 **Base path**: `/api/auth`
@@ -803,12 +815,14 @@ curl -X GET http://localhost:8080/api/enrollments/course/c1d2e3f4-a5b6-7890-cdef
 
 **Request Body** (`application/json`):
 
-| Field           | Type       | Required | Validation        | Mô tả                                    |
-|-----------------|-----------|----------|-------------------|-------------------------------------------|
-| `courseId`       | `string`  | ✅       | Không được trống   | ID khóa học                               |
-| `slotNumber`     | `integer` | ✅       | 1–6               | Tiết học (Slot 1 đến Slot 6)              |
-| `expiredAt`      | `string`  | ✅       | ISO 8601 datetime  | Thời gian hết hạn QR (`yyyy-MM-ddTHH:mm:ss`)|
-| `roomNetworkIp`  | `string`  | ❌       |                    | IP mạng phòng học (kiểm tra cùng mạng)     |
+| Field              | Type       | Required | Validation        | Mô tả                                                            |
+|--------------------|-----------|----------|-------------------|-------------------------------------------------------------------|
+| `courseId`          | `string`  | ✅       | Không được trống   | ID khóa học                                                       |
+| `slotNumber`        | `integer` | ✅       | 1–6               | Tiết học (Slot 1 đến Slot 6)                                      |
+| `expiredAt`         | `string`  | ✅       | ISO 8601 datetime  | Thời gian hết hạn QR (`yyyy-MM-ddTHH:mm:ss`)                      |
+| `qrRefreshSeconds`  | `integer` | ❌       | 5–300 (Mặc định 20)| Thời gian chu kỳ tự động đổi mã QR TOTP (giây)                     |
+| `roomNetworkIp`     | `string`  | ❌       |                    | IP mạng phòng học (Tùy chọn ghi đè, mặc định tự bắt Public IP GV) |
+| `roomBssid`         | `string`  | ❌       |                    | Địa chỉ MAC Router Wi-Fi phòng học (BSSID) lấy từ Mobile App      |
 
 **Response** (`201 Created`):
 
@@ -823,9 +837,15 @@ curl -X GET http://localhost:8080/api/enrollments/course/c1d2e3f4-a5b6-7890-cdef
     "sessionCode": "849201",
     "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef",
     "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6...",
-    "roomNetworkIp": "192.168.1.0",
+    "roomNetworkIp": "192.168.1.116",
+    "hostPublicIp": "192.168.1.116",
+    "roomBssid": "c8:0e:14:2b:8a:90",
+    "currentQrToken": "4F3A8B12",
+    "tokenRemainingSeconds": 19,
+    "tokenIntervalSeconds": 20,
+    "qrRefreshSeconds": 20,
     "expiredAt": "2026-09-23T10:30:00",
-    "status": "OPEN",
+    "status": "ACTIVE",
     "createdAt": "2026-09-23T09:30:00"
   },
   "timestamp": "2026-09-23T02:30:00.000Z"
@@ -833,11 +853,14 @@ curl -X GET http://localhost:8080/api/enrollments/course/c1d2e3f4-a5b6-7890-cdef
 ```
 
 > 💡 **Lưu ý**:
-> - `sessionCode`: Mã PIN 6 chữ số ngẫu nhiên cho phép sinh viên nhập thủ công thay vì quét QR.
-> - `qrCodeBase64` là hình ảnh QR code mã hóa Base64 (PNG). Frontend hiển thị bằng:
-> ```html
-> <img src="data:image/png;base64,{qrCodeBase64}" />
-> ```
+> - `qrRefreshSeconds`: Giảng viên có thể tùy chọn thời gian làm mới mã QR (từ 5 đến 300 giây). Nếu không truyền hoặc để `null`, hệ thống **mặc định là 20 giây**.
+> - `hostPublicIp`: Hệ thống tự động ghi nhận địa chỉ IP của Giảng viên khi gọi API tạo phiên (không cần cấu hình tay). 
+>   - Trên Production (Internet): Bắt Public IP qua Cloudflare / Nginx Reverse Proxy.
+>   - Trên môi trường Dev / Local LAN (khi Giảng viên chạy Flutter Desktop/Web gọi `localhost`): Backend tự động phân giải loopback `127.0.0.1` sang địa chỉ IPv4 vật lý của card Wi-Fi/Ethernet máy chủ (ví dụ `192.168.1.116`), giúp thiết bị di động của sinh viên trong cùng mạng Wi-Fi điểm danh thành công 100%.
+> - `roomBssid`: Tùy chọn (Optional). Nếu tạo phiên từ Web hoặc Windows Desktop (không đọc được MAC router), có thể để trống. Backend tự động lọc bỏ các mã MAC dummy như `02:00:00:00:00:00` hoặc `unknown`.
+> - `currentQrToken`: Mã token QR động sinh theo thuật toán TOTP, tự động đổi mỗi chu kỳ (mặc định 20 giây) (Stateless).
+> - `tokenRemainingSeconds`: Số giây còn lại trước khi token chuyển sang chu kỳ mới phục vụ thanh đếm ngược countdown.
+> - `qrCodeBase64` là hình ảnh QR code mã hóa Base64 (PNG) chứa giá trị `currentQrToken`.
 
 **Ví dụ Request**:
 ```bash
@@ -848,13 +871,55 @@ curl -X POST http://localhost:8080/api/sessions \
     "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
     "slotNumber": 1,
     "expiredAt": "2026-09-23T10:30:00",
-    "roomNetworkIp": "192.168.1.0"
+    "qrRefreshSeconds": 20
   }'
 ```
 
 ---
 
-### 4.2. Xem chi tiết buổi điểm danh
+### 4.2. Lấy mã Dynamic QR Token hiện tại (Polling)
+
+| Thuộc tính   | Giá trị                              |
+|-------------|---------------------------------------|
+| **Tên**     | Get Current Dynamic QR Token          |
+| **Method**  | `GET`                                 |
+| **URL**     | `/api/sessions/{sessionId}/current-token` |
+| **Auth**    | ✅ Bearer Token (Tất cả role)         |
+
+**Response** (`200 OK`):
+```json
+{
+  "success": true,
+  "message": "Lấy mã QR token thành công",
+  "data": {
+    "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
+    "currentQrToken": "8D2A1C7B",
+    "tokenRemainingSeconds": 7,
+    "tokenIntervalSeconds": 10,
+    "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6...",
+    "status": "ACTIVE"
+  },
+  "timestamp": "2026-09-23T02:30:00.000Z"
+}
+```
+
+---
+
+### 4.3. Stream SSE mã QR động realtime (Server-Sent Events)
+
+| Thuộc tính   | Giá trị                              |
+|-------------|---------------------------------------|
+| **Tên**     | Stream QR Token SSE                   |
+| **Method**  | `GET`                                 |
+| **URL**     | `/api/sessions/{sessionId}/qr-stream` |
+| **Header**  | `Accept: text/event-stream`           |
+| **Auth**    | ✅ Bearer Token (Tất cả role)         |
+
+> 💡 Màn hình máy chiếu của Giảng viên chỉ cần giữ kết nối SSE này, Backend tự động push token mới và countdown mỗi 1 giây (Event name: `qr-token`).
+
+---
+
+### 4.4. Xem chi tiết buổi điểm danh
 
 | Thuộc tính   | Giá trị                              |
 |-------------|---------------------------------------|
@@ -863,33 +928,7 @@ curl -X POST http://localhost:8080/api/sessions \
 | **URL**     | `/api/sessions/{sessionId}`           |
 | **Auth**    | ✅ Bearer Token (Tất cả role)         |
 
-**Path Parameters**:
-
-| Param       | Type     | Mô tả                |
-|------------|----------|-----------------------|
-| `sessionId`| `string` | ID buổi điểm danh     |
-
-**Response** (`200 OK`):
-
-```json
-{
-  "success": true,
-  "message": "Lấy thông tin buổi điểm danh thành công",
-  "data": {
-    "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
-    "courseId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
-    "slotNumber": 1,
-    "sessionCode": "849201",
-    "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef",
-    "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6...",
-    "roomNetworkIp": "192.168.1.0",
-    "expiredAt": "2026-09-23T10:30:00",
-    "status": "OPEN",
-    "createdAt": "2026-09-23T09:30:00"
-  },
-  "timestamp": "2026-09-23T02:30:00.000Z"
-}
-```
+**Response** (`200 OK`): Trả về thông tin phiên điểm danh kèm `currentQrToken` và `qrCodeBase64`.
 
 **Ví dụ Request**:
 ```bash
@@ -1006,20 +1045,27 @@ curl -X PUT http://localhost:8080/api/sessions/s1t2u3v4-w5x6-7890-yzab-cdef12345
 
 **Request Body** (`application/json`):
 
-| Field          | Type     | Required | Mô tả                                                                    |
-|---------------|----------|----------|---------------------------------------------------------------------------|
-| `sessionId`    | `string` | ⚠️       | ID buổi điểm danh (bắt buộc nếu điểm danh qua QR; tùy chọn nếu dùng PIN)  |
-| `qrCodeSecret` | `string` | ⚠️       | Mã bí mật QR Code (bắt buộc nếu quét QR)                                  |
-| `sessionCode`  | `string` | ⚠️       | Mã PIN 6 chữ số buổi học (thay thế cho QR; tìm tự động session đang OPEN)|
-| `clientIp`     | `string` | ❌       | IP thiết bị (nếu bỏ trống hệ thống tự lấy qua header `X-Forwarded-For`)   |
+| Field          | Type     | Required | Mô tả                                                                               |
+|---------------|----------|----------|--------------------------------------------------------------------------------------|
+| `sessionId`    | `string` | ⚠️       | ID buổi điểm danh (bắt buộc nếu điểm danh qua QR; tùy chọn nếu dùng PIN)             |
+| `qrToken`      | `string` | ⚠️       | **Mã Dynamic QR Token** (8 ký tự Hex đổi mỗi 10s quét từ camera máy chiếu)          |
+| `qrCodeSecret` | `string` | ⚠️       | Mã bí mật QR tĩnh (hỗ trợ backward compatibility)                                    |
+| `sessionCode`  | `string` | ⚠️       | Mã PIN 6 chữ số buổi học (thay thế cho QR; tìm tự động session đang ACTIVE/OPEN)     |
+| `bssid`        | `string` | ❌       | Địa chỉ MAC Router Wi-Fi phòng học lấy từ Mobile App (khuyến nghị cho PRM323)        |
+| `deviceId`     | `string` | ❌       | Mã định danh thiết bị vật lý (Chống 1 điện thoại điểm danh cho nhiều sinh viên)      |
+| `clientIp`     | `string` | ❌       | *(Deprecated/Bỏ qua)* — Server tự đọc IP thực từ socket/proxy để chống giả mạo       |
 
-> ⚠️ **Hệ thống kiểm tra 6 điều kiện nghiệp vụ**:
-> 1. Session tồn tại và đang `OPEN` (theo `sessionId` hoặc `sessionCode`)
-> 2. QR code secret khớp (nếu quét QR) HOẶC sessionCode 6 chữ số hợp lệ (nếu nhập PIN)
-> 3. Buổi học chưa hết hạn (`expiredAt`)
-> 4. Sinh viên đã đăng ký khóa học (`enrollment`)
-> 5. Chưa điểm danh trùng (chống spam / điểm danh lặp)
-> 6. **Xác thực Wi-Fi phòng học**: Nếu buổi học cấu hình `roomNetworkIp`, địa chỉ IP của sinh viên phải cùng mạng (cùng IP hoặc cùng subnet `/24`, ví dụ `192.168.1.*`)
+> ⚠️ **Hệ thống kiểm tra 6 điều kiện an ninh đa tầng**:
+> 1. **Trạng thái phiên**: Session tồn tại và đang `ACTIVE`/`OPEN`.
+> 2. **Thời gian thực Dynamic Token**: `qrToken` khớp thuật toán TOTP trong chu kỳ hiện tại $\pm 1$ bước (dung sai 10–20s để bù trễ mạng, chống chụp ảnh gửi từ xa).
+> 3. **Thời hạn**: Buổi học chưa hết hạn (`expiredAt`).
+> 4. **Ghi danh**: Sinh viên đã đăng ký khóa học (`enrollment`).
+> 5. **Chống điểm danh hộ trên 1 máy**: `deviceId` này chưa từng được dùng để điểm danh cho sinh viên khác trong cùng session.
+> 6. **Xác thực Wi-Fi thích ứng đa tầng (Adaptive Wi-Fi Verification)**:
+>    - *Tầng 1 (BSSID)*: Nếu session có cấu hình `roomBssid` hợp lệ và thiết bị gửi `bssid` hợp lệ khớp $\rightarrow$ Xác nhận thành công ngay.
+>    - *Tầng 2 (Lọc BSSID ảo & Fallback)*: Tự động bỏ qua các mã MAC dummy như `02:00:00:00:00:00` (khi Android tắt GPS) và fallback sang kiểm tra IP.
+>    - *Tầng 3 (IPv4 Subnet /24 & IPv6 /64)*: So sánh IP thực của sinh viên với IP của giảng viên (`hostPublicIp`). Chấp nhận cùng dải Subnet `/24` (3 octet đầu khớp nhau, VD: `192.168.1.*` hoặc `118.69.12.*`) hoặc cùng 4 hextet đầu của IPv6 (prefix `/64`).
+>    - *Tầng 4 (Local LAN Dev)*: Tự động khớp IP của thiết bị sinh viên trong mạng LAN Wi-Fi với máy tính chạy backend khi phiên được tạo qua `localhost` (`127.0.0.1`).
 
 **Response** (`201 Created`):
 
@@ -1034,20 +1080,23 @@ curl -X PUT http://localhost:8080/api/sessions/s1t2u3v4-w5x6-7890-yzab-cdef12345
     "studentFapCode": "SE192964",
     "studentName": "Ngô Hoàng Trường Đạt",
     "status": "PRESENT",
+    "deviceId": "DEV-ANDROID-987654",
     "checkedAt": "2026-09-23T09:45:00"
   },
   "timestamp": "2026-09-23T02:45:00.000Z"
 }
 ```
 
-**Ví dụ Request 1 (Quét mã QR)**:
+**Ví dụ Request 1 (Quét Dynamic QR trên máy chiếu)**:
 ```bash
 curl -X POST http://localhost:8080/api/attendance/check-in \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: application/json" \
   -d '{
     "sessionId": "s1t2u3v4-w5x6-7890-yzab-cdef12345678",
-    "qrCodeSecret": "ATTENDANCE_QR_a1b2c3d4e5f678901234567890abcdef"
+    "qrToken": "4F3A8B12",
+    "bssid": "c8:0e:14:2b:8a:90",
+    "deviceId": "DEV-ANDROID-987654"
   }'
 ```
 
@@ -1548,21 +1597,22 @@ curl -X GET "http://localhost:8080/api/lecturer/dashboard-stats?lecturerId=l1m2n
 | 11 | `POST`   | `/api/courses/{courseId}/import-students`      | ✅ Token    | LECTURER, ADMIN           | Import danh sách sinh viên vào khóa học bằng Excel    |
 | 12 | `POST`   | `/api/enrollments`                             | ✅ Token    | STUDENT, ADMIN            | Đăng ký tham gia khóa học (EnrollmentController)      |
 | 13 | `GET`    | `/api/enrollments/my-courses`                  | ✅ Token    | STUDENT, ADMIN            | Xem khóa học đã đăng ký (EnrollmentController)        |
-| 14 | `GET`    | `/api/enrollments/course/{courseId}`            | ✅ Token    | LECTURER, ADMIN           | DS sinh viên trong lớp                                |
-| 15 | `POST`   | `/api/sessions`                                | ✅ Token    | LECTURER, ADMIN           | Tạo buổi điểm danh (sinh QR & mã PIN 6 số)            |
-| 16 | `GET`    | `/api/sessions/{sessionId}`                    | ✅ Token    | Tất cả                    | Chi tiết buổi điểm danh                               |
-| 17 | `GET`    | `/api/sessions/course/{courseId}`               | ✅ Token    | Tất cả                    | DS buổi điểm danh theo khóa học                       |
-| 18 | `PUT`    | `/api/sessions/{sessionId}/close`              | ✅ Token    | LECTURER, ADMIN           | Đóng buổi điểm danh                                  |
-| 19 | `POST`   | `/api/attendance/check-in`                     | ✅ Token    | STUDENT, ADMIN            | Điểm danh qua QR / mã PIN / kiểm tra Wi-Fi            |
-| 20 | `GET`    | `/api/attendance/session/{sessionId}`          | ✅ Token    | LECTURER, ADMIN           | Lịch sử điểm danh buổi học                            |
-| 21 | `GET`    | `/api/attendance/my-history`                   | ✅ Token    | STUDENT, ADMIN            | Lịch sử điểm danh cá nhân sinh viên                   |
-| 22 | `GET`    | `/api/attendance/export/{sessionId}`           | ✅ Token    | LECTURER, ADMIN           | Xuất CSV điểm danh                                    |
-| 23 | `GET`    | `/api/attendance/export-excel/{sessionId}`     | ✅ Token    | LECTURER, ADMIN           | Xuất Excel 100% sinh viên (PRESENT / ABSENT)          |
-| 24 | `POST`   | `/api/users/import-excel`                      | ❌ Public   | —                         | Import danh sách người dùng từ Excel                  |
-| 25 | `PUT`    | `/api/users/profile`                           | ✅ Token    | Tất cả                    | Cập nhật thông tin cá nhân (sync Sheets)              |
-| 26 | `PUT`    | `/api/users/change-password`                   | ✅ Token    | Tất cả                    | Đổi mật khẩu tài khoản (sync Sheets)                  |
-| 27 | `GET`    | `/api/sync-logs`                               | ✅ Token    | ADMIN, LECTURER           | Xem nhật ký đồng bộ Google Sheets                     |
-| 28 | `GET`    | `/api/lecturer/dashboard-stats`                | ✅ Token    | LECTURER, ADMIN           | Thống kê Dashboard giảng viên (courses, SV, sessions) |
+| 15 | `POST`   | `/api/sessions`                                | ✅ Token    | LECTURER, ADMIN           | Tạo buổi điểm danh (bắt IP GV, BSSID, sinh QR TOTP)  |
+| 16 | `GET`    | `/api/sessions/{sessionId}`                    | ✅ Token    | Tất cả                    | Chi tiết buổi điểm danh (kèm token TOTP & Base64)     |
+| 17 | `GET`    | `/api/sessions/{sessionId}/current-token`      | ✅ Token    | Tất cả                    | Lấy mã Dynamic QR Token hiện tại (Polling)            |
+| 18 | `GET`    | `/api/sessions/{sessionId}/qr-stream`          | ✅ Token    | Tất cả                    | Stream SSE mã QR động realtime mỗi 1s cho máy chiếu   |
+| 19 | `GET`    | `/api/sessions/course/{courseId}`               | ✅ Token    | Tất cả                    | DS buổi điểm danh theo khóa học                       |
+| 20 | `PUT`    | `/api/sessions/{sessionId}/close`              | ✅ Token    | LECTURER, ADMIN           | Đóng buổi điểm danh                                  |
+| 21 | `POST`   | `/api/attendance/check-in`                     | ✅ Token    | STUDENT, ADMIN            | Điểm danh Dynamic QR TOTP / Wi-Fi kép (BSSID, Subnet) |
+| 22 | `GET`    | `/api/attendance/session/{sessionId}`          | ✅ Token    | LECTURER, ADMIN           | Lịch sử điểm danh buổi học                            |
+| 23 | `GET`    | `/api/attendance/my-history`                   | ✅ Token    | STUDENT, ADMIN            | Lịch sử điểm danh cá nhân sinh viên                   |
+| 24 | `GET`    | `/api/attendance/export/{sessionId}`           | ✅ Token    | LECTURER, ADMIN           | Xuất CSV điểm danh                                    |
+| 25 | `GET`    | `/api/attendance/export-excel/{sessionId}`     | ✅ Token    | LECTURER, ADMIN           | Xuất Excel 100% sinh viên (PRESENT / ABSENT)          |
+| 26 | `POST`   | `/api/users/import-excel`                      | ❌ Public   | —                         | Import danh sách người dùng từ Excel                  |
+| 27 | `PUT`    | `/api/users/profile`                           | ✅ Token    | Tất cả                    | Cập nhật thông tin cá nhân (sync Sheets)              |
+| 28 | `PUT`    | `/api/users/change-password`                   | ✅ Token    | Tất cả                    | Đổi mật khẩu tài khoản (sync Sheets)                  |
+| 29 | `GET`    | `/api/sync-logs`                               | ✅ Token    | ADMIN, LECTURER           | Xem nhật ký đồng bộ Google Sheets                     |
+| 30 | `GET`    | `/api/lecturer/dashboard-stats`                | ✅ Token    | LECTURER, ADMIN           | Thống kê Dashboard giảng viên (courses, SV, sessions) |
 
 ---
 

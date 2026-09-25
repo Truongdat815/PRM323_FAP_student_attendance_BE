@@ -151,6 +151,8 @@ attendance_backend/
         │   │
         │   └── util/                               # 🛠️ Tiện ích
         │       ├── QRCodeGenerator.java            # Sinh QR Code base64
+        │       ├── TotpUtil.java                   # Thuật toán TOTP sinh/xác thực Dynamic QR Token 10s (Stateless)
+        │       ├── IpUtil.java                     # Trích xuất IP Proxy/Cloudflare & Subnet /24 Matching
         │       └── SheetConstants.java             # Tên sheet & header constants
         │
         └── resources/
@@ -272,9 +274,9 @@ Dự án sử dụng kiến trúc **Layered Architecture** theo chuẩn Spring B
 | `users`                  | Thông tin người dùng (SV, GV, Admin, hỗ trợ đổi pass, cập nhật)   |
 | `courses`                | Khóa học / Lớp học phần (có mật khẩu bảo vệ)                      |
 | `enrollments`            | Đăng ký SV vào khóa học (thủ công hoặc import Excel)              |
-| `attendance_sessions`    | Buổi điểm danh (chứa QR secret, sessionCode 6 số, roomNetworkIp)  |
-| `attendance_records`     | Bản ghi điểm danh của từng SV (PRESENT/ABSENT)                    |
-| `google_sheet_sync_logs` | Nhật ký đồng bộ dữ liệu với Google Sheets                         |
+| `attendance_sessions`    | Buổi điểm danh (chứa QR secret, sessionCode 6 số, roomNetworkIp, hostPublicIp, roomBssid) |
+| `attendance_records`     | Bản ghi điểm danh của từng SV (PRESENT/ABSENT, lưu deviceId chống gian lận máy)            |
+| `google_sheet_sync_logs` | Nhật ký đồng bộ dữ liệu với Google Sheets                                                 |
 
 ---
 
@@ -461,3 +463,39 @@ String courseId = UUID.randomUUID().toString();
 - **Tác giả**: Ngô Hoàng Trường Đạt và các cộng sự
 - **Email**: datnhse192964@fpt.edu.vn
 - **Môn học**: PRM323 — FPT University
+
+---
+
+## 14. 🚀 Nhật ký nâng cấp: Hệ thống Điểm danh Dynamic QR Code (TOTP) & Wi-Fi Thích Ứng Đa Tầng (Adaptive Wi-Fi Verification)
+
+Nhằm giải quyết triệt để vấn đề gian lận (chụp ảnh màn hình gửi qua Zalo/Messenger, dùng 4G ở nhà điểm danh) và khắc phục các rủi ro mạng thực tế (Cân bằng tải Multi-WAN trường học, lệch IPv4/IPv6, lỗi Android tắt GPS mất BSSID, và môi trường phát triển nội bộ LAN/Localhost), hệ thống đã được nâng cấp toàn diện:
+
+### 14.1. Các thay đổi về Công nghệ & Thuật toán
+1. **Thuật toán Dynamic QR TOTP (Stateless & Tùy biến chu kỳ)**:
+   - File: `com.example.attendance_backend.util.TotpUtil`
+   - Token ngắn hạn (8 ký tự Hex, VD: `4F3A8B12`) sinh theo thuật toán HMAC-SHA256, **chu kỳ làm mới mặc định là 20 giây** (thay vì 10s trước đây để sinh viên có thêm thời gian quét).
+   - **Giảng viên có thể tùy biến thời gian này** theo từng buổi học (từ 5 đến 300 giây).
+   - Cơ chế xác thực dung sai $\pm 1$ chu kỳ bù trừ độ trễ mạng Internet và tốc độ lấy nét camera.
+   - **Tối ưu 100% tài nguyên**: Không cần lưu token vào Database hay Cache, triệt tiêu gánh nặng I/O và CPU khi có hàng trăm lớp cùng điểm danh.
+2. **Tiện ích Xử lý IP & Mạng Wi-Fi Thích Ứng Đa Tầng**:
+   - File: `com.example.attendance_backend.util.IpUtil`
+   - **Bóc tách IP thực**: Ưu tiên đọc qua các proxy header (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`, `RemoteAddr`), chuẩn hóa IPv6 localhost về `127.0.0.1`.
+   - **Subnet /24 Matching (IPv4)**: So sánh 3 octet đầu của IPv4 giữa Sinh viên và Giảng viên (`118.69.12.*` hoặc `192.168.1.*`), giải quyết triệt để việc Router trường học cân bằng tải Multi-WAN hoặc cấp IP nội bộ qua DHCP.
+   - **Prefix /64 Matching (IPv6)**: So sánh 4 hextet đầu của địa chỉ IPv6 khi hai thiết bị kết nối vào mạng router hỗ trợ IPv6.
+   - **Tự động nhận diện IP Máy chủ (Local LAN Dev Support)**: Khi Giảng viên tạo buổi học từ Laptop qua `localhost` (`127.0.0.1`), Backend tự động quét các card mạng vật lý đang hoạt động (`NetworkInterface`) để lấy IP LAN Wi-Fi (ví dụ `192.168.1.116`), đồng thời cơ chế so khớp IP tự động liên kết `127.0.0.1` với các interface nội bộ của máy chủ, cho phép Điện thoại và Laptop cùng Wi-Fi điểm danh thành công 100%.
+   - **Lọc BSSID ảo & Adaptive Fallback**: Lọc bỏ các mã MAC dummy do Android trả về khi người dùng tắt GPS (`02:00:00:00:00:00`, `unknown`). Nếu điện thoại không lấy được BSSID, Backend tự động chuyển tiếp sang kiểm tra IP mạng để sinh viên không bị gián đoạn.
+
+### 14.2. Các thay đổi về Cơ sở dữ liệu (Database Schema)
+- **Bảng `attendance_sessions`**:
+  - `qr_refresh_seconds INT DEFAULT 20`: Chu kỳ tự động đổi mã QR TOTP (giây). Mặc định là 20 giây nếu Giảng viên không chỉ định.
+  - `host_public_ip VARCHAR(45)`: Tự động chụp lại IP của Giảng viên khi gọi API tạo phiên (hỗ trợ cả Public IP và LAN IP).
+  - `room_bssid VARCHAR(50)`: Địa chỉ MAC phần cứng của Router Wi-Fi phòng học lấy từ Mobile App.
+- **Bảng `attendance_records`**:
+  - `device_id VARCHAR(100)`: Mã định danh phần cứng thiết bị.
+  - Quy tắc bảo mật: **Một thiết bị chỉ được điểm danh cho đúng 1 sinh viên trong một buổi học** (chống 1 máy điểm danh hộ nhiều bạn).
+
+### 14.3. Các Endpoint API Mới & Cập nhật
+- `POST /api/sessions`: Tự động trích xuất IP của Giảng viên gán vào `hostPublicIp`, hỗ trợ nhận `roomBssid`.
+- `GET /api/sessions/{sessionId}/current-token`: Endpoint Polling lấy mã TOTP token mới nhất kèm số giây countdown còn lại.
+- `GET /api/sessions/{sessionId}/qr-stream`: Endpoint **Server-Sent Events (SSE)** tự động push token và countdown mỗi 1 giây cho màn hình máy chiếu của Giảng viên.
+- `POST /api/attendance/check-in`: Nhận `qrToken`, `bssid`, `deviceId`; Server tự đọc `clientIp` từ socket (bỏ qua `clientIp` trong body để chống IP Spoofing); thực hiện xác thực đa tầng (BSSID $\rightarrow$ IPv4 Subnet /24 $\rightarrow$ IPv6 Prefix /64 $\rightarrow$ LAN Dev).
