@@ -28,8 +28,7 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
     @Value("${google.sheets.spreadsheet-id:}")
     private String defaultSpreadsheetId;
 
-    @Autowired
-    public GoogleSheetsServiceImpl(@Autowired(required = false) Sheets sheetsService) {
+    public GoogleSheetsServiceImpl(Sheets sheetsService) {
         this.sheetsService = sheetsService;
     }
 

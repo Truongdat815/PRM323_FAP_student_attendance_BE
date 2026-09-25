@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Google credentials
+credentials.json
+src/main/resources/credentials.json
+
+### Secrets & Config ###
+.env
+.env.*
+!.env.example

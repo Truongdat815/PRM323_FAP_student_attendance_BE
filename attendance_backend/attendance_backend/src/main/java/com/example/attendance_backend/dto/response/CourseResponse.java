@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * DTO trả về thông tin chi tiết khóa học cho Client.
  */
@@ -20,9 +22,14 @@ public class CourseResponse {
     private String className;
     private String semester;
     private String lecturerId;
-    private String createdAt;
+    private String lecturerName;
+    private LocalDateTime createdAt;
 
     public static CourseResponse fromCourse(Course course) {
+        return fromCourse(course, null);
+    }
+
+    public static CourseResponse fromCourse(Course course, String lecturerName) {
         if (course == null) {
             return null;
         }
@@ -32,6 +39,7 @@ public class CourseResponse {
                 .className(course.getClassName())
                 .semester(course.getSemester())
                 .lecturerId(course.getLecturerId())
+                .lecturerName(lecturerName)
                 .createdAt(course.getCreatedAt())
                 .build();
     }

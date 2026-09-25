@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * DTO trả về thông tin đăng ký khóa học của sinh viên.
  */
@@ -18,7 +20,7 @@ public class EnrollmentResponse {
     private String enrollmentId;
     private String courseId;
     private String studentId;
-    private String enrolledAt;
+    private LocalDateTime enrolledAt;
 
     // Các thông tin mở rộng hỗ trợ hiển thị
     private String subjectCode;

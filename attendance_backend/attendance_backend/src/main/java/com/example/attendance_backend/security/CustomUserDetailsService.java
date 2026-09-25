@@ -25,12 +25,9 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        try {
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy tài khoản: " + username));
-            return new CustomUserDetails(user);
-        } catch (IOException e) {
-            throw new RuntimeException("Lỗi khi đọc dữ liệu từ Google Sheets: " + e.getMessage(), e);
-        }
+        User user = userRepository.findByUsername(username)
+                .or(() -> userRepository.findById(username))
+                .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy tài khoản: " + username));
+        return new CustomUserDetails(user);
     }
 }

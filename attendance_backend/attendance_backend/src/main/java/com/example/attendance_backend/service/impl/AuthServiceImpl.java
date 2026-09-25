@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -48,8 +49,11 @@ public class AuthServiceImpl implements AuthService {
         String username = request.getUsername().trim();
         String password = request.getPassword();
 
-        // 1. Tìm tài khoản trong sheet USERS
+        // 1. Tìm tài khoản trực tiếp trong cơ sở dữ liệu
         User user = userRepository.findByUsername(username)
+                .or(() -> userRepository.findByMemberCode(username))
+                .or(() -> userRepository.findByFapCode(username))
+                .or(() -> userRepository.findByEmail(username))
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Tên tài khoản hoặc mật khẩu không chính xác."));
 
         // 2. So khớp mật khẩu đã băm bằng BCrypt
@@ -87,7 +91,7 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        // 3. Kiểm tra trùng lặp username trên Google Sheets USERS
+        // 3. Kiểm tra trùng lặp username trong CSDL
         if (userRepository.existsByUsername(username)) {
             throw new AppException(HttpStatus.CONFLICT, "Tên tài khoản (username) '" + username + "' đã được sử dụng.");
         }
@@ -102,7 +106,6 @@ public class AuthServiceImpl implements AuthService {
 
         // 6. Khởi tạo đối tượng User mới
         String userId = "USR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String now = Instant.now().toString();
 
         User newUser = User.builder()
                 .userId(userId)
@@ -112,10 +115,10 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(request.getFullName().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .roleId(roleId)
-                .createdAt(now)
+                .createdAt(LocalDateTime.now())
                 .build();
 
-        // 7. Lưu xuống sheet USERS thông qua repository
+        // 7. Lưu xuống cơ sở dữ liệu thông qua userRepository
         userRepository.save(newUser);
         log.info("✅ Đăng ký tài khoản thành công: username={}, role={}, userId={}", username, roleId, userId);
 
