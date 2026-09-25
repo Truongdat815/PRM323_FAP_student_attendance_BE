@@ -16,6 +16,8 @@ import com.example.attendance_backend.repository.EnrollmentRepository;
 import com.example.attendance_backend.repository.UserRepository;
 import com.example.attendance_backend.service.AttendanceRecordService;
 import com.example.attendance_backend.service.SyncLogService;
+import com.example.attendance_backend.util.IpUtil;
+import com.example.attendance_backend.util.TotpUtil;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,12 +73,16 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
         User student = userRepository.findByUsername(currentUsername)
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Không tìm thấy thông tin sinh viên."));
 
-        // Yêu cầu ít nhất một trong hai trường qrCodeSecret hoặc sessionCode phải có giá trị
-        boolean hasQr = request.getQrCodeSecret() != null && !request.getQrCodeSecret().trim().isEmpty();
+        // Xác định mã token gửi lên (ưu tiên qrToken mới, fallback qrCodeSecret cũ)
+        String inputToken = (request.getQrToken() != null && !request.getQrToken().trim().isEmpty())
+                ? request.getQrToken().trim()
+                : (request.getQrCodeSecret() != null && !request.getQrCodeSecret().trim().isEmpty() ? request.getQrCodeSecret().trim() : null);
+
+        boolean hasQr = inputToken != null && !inputToken.isEmpty();
         boolean hasPin = request.getSessionCode() != null && !request.getSessionCode().trim().isEmpty();
 
         if (!hasQr && !hasPin) {
-            throw new AppException(HttpStatus.BAD_REQUEST, "Vui lòng cung cấp mã QR (qrCodeSecret) hoặc mã PIN buổi học (sessionCode).");
+            throw new AppException(HttpStatus.BAD_REQUEST, "Vui lòng cung cấp mã QR (qrToken) hoặc mã PIN buổi học (sessionCode).");
         }
 
         AttendanceSession session;
@@ -112,41 +118,79 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
             throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR / Phiên điểm danh đã hết hạn.");
         }
 
-        // Kiểm tra tính hợp lệ của PIN code hoặc QR secret
+        // 1. Kiểm tra tính hợp lệ của PIN code hoặc Dynamic QR code
         if (hasPin) {
             if (session.getSessionCode() == null || !session.getSessionCode().trim().equals(request.getSessionCode().trim())) {
                 syncLogService.logSync("CHECK_IN", "FAILED", "Invalid sessionCode for session " + session.getSessionId());
                 throw new AppException(HttpStatus.BAD_REQUEST, "Mã PIN điểm danh (sessionCode) không chính xác.");
             }
         } else {
-            if (session.getQrCodeSecret() == null || !session.getQrCodeSecret().trim().equals(request.getQrCodeSecret().trim())) {
-                syncLogService.logSync("CHECK_IN", "FAILED", "Invalid QR code secret for session " + session.getSessionId());
-                throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR không hợp lệ hoặc đã hết hạn.");
+            int interval = (session.getQrRefreshSeconds() != null && session.getQrRefreshSeconds() > 0)
+                    ? session.getQrRefreshSeconds() : TotpUtil.DEFAULT_TIME_STEP_SECONDS;
+
+            // Xác thực Dynamic TOTP token (window = 1 chu kỳ ~ interval giây để bù trễ mạng)
+            boolean isValidTotp = TotpUtil.verifyToken(session.getQrCodeSecret(), inputToken, interval, TotpUtil.DEFAULT_TOLERANCE_WINDOW);
+            boolean isLegacySecret = session.getQrCodeSecret() != null && session.getQrCodeSecret().equalsIgnoreCase(inputToken);
+
+            if (!isValidTotp && !isLegacySecret) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "Invalid or expired QR token for session " + session.getSessionId());
+                throw new AppException(HttpStatus.BAD_REQUEST, "Mã QR không hợp lệ hoặc đã hết hạn (mã QR tự làm mới mỗi " + interval + " giây). Vui lòng quét lại.");
             }
         }
 
+        // 2. Kiểm tra ghi danh môn học (Enrollment)
         boolean isEnrolled = enrollmentRepository.existsByCourseIdAndStudentId(session.getCourseId(), student.getUserId());
         if (!isEnrolled) {
             syncLogService.logSync("CHECK_IN", "FAILED", "Student " + student.getUserId() + " is not enrolled in course " + session.getCourseId());
             throw new AppException(HttpStatus.FORBIDDEN, "Sinh viên chưa đăng ký tham gia khóa học này.");
         }
 
+        // 3. Kiểm tra trùng lặp sinh viên (Anti-Spam)
         boolean alreadyCheckedIn = attendanceRecordRepository.existsBySessionIdAndStudentId(session.getSessionId(), student.getUserId());
         if (alreadyCheckedIn) {
             syncLogService.logSync("CHECK_IN", "FAILED", "Student " + student.getUserId() + " already checked in session " + session.getSessionId());
             throw new AppException(HttpStatus.BAD_REQUEST, "Sinh viên đã thực hiện điểm danh cho buổi học này trước đó.");
         }
 
-        // Kiểm tra địa chỉ IP mạng Wi-Fi phòng học
-        if (session.getRoomNetworkIp() != null && !session.getRoomNetworkIp().trim().isEmpty()) {
-            String requiredIp = session.getRoomNetworkIp().trim();
-            String effectiveClientIp = (request.getClientIp() != null && !request.getClientIp().trim().isEmpty())
-                    ? request.getClientIp().trim()
-                    : clientIp;
+        // 4. Chống điểm danh hộ trên cùng một thiết bị (Device Binding)
+        String deviceId = request.getDeviceId() != null ? request.getDeviceId().trim() : null;
+        if (deviceId != null && !deviceId.isEmpty()) {
+            boolean deviceAlreadyUsed = attendanceRecordRepository.existsBySessionIdAndDeviceId(session.getSessionId(), deviceId);
+            if (deviceAlreadyUsed) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "Device " + deviceId + " already used in session " + session.getSessionId());
+                throw new AppException(HttpStatus.BAD_REQUEST, "Thiết bị này đã được sử dụng để điểm danh cho một sinh viên khác trong buổi học này.");
+            }
+        }
 
-            if (!isNetworkMatching(effectiveClientIp, requiredIp)) {
-                syncLogService.logSync("CHECK_IN", "FAILED", "IP mismatch. Client: " + effectiveClientIp + ", Required: " + requiredIp);
-                throw new AppException(HttpStatus.BAD_REQUEST, "Thiết bị không kết nối đúng mạng Wi-Fi phòng học yêu cầu.");
+        // 5. Kiểm tra kết nối mạng Wi-Fi (Ưu tiên BSSID -> Fallback Public IP Subnet)
+        boolean wifiVerified = false;
+
+        // Ưu tiên 1: Kiểm tra BSSID từ Router Wi-Fi phòng học nếu buổi học có cấu hình BSSID hợp lệ
+        if (IpUtil.isValidBssid(session.getRoomBssid())) {
+            String requiredBssid = session.getRoomBssid().trim();
+            String clientBssid = request.getBssid() != null ? request.getBssid().trim() : "";
+
+            if (requiredBssid.equalsIgnoreCase(clientBssid)) {
+                wifiVerified = true;
+            } else if (IpUtil.isValidBssid(clientBssid)) {
+                // Sinh viên gửi lên một BSSID hợp lệ khác -> Chắc chắn đang kết nối mạng Wi-Fi khác
+                syncLogService.logSync("CHECK_IN", "FAILED", "BSSID mismatch. Client: " + clientBssid + ", Required: " + requiredBssid);
+                throw new AppException(HttpStatus.BAD_REQUEST, "Thiết bị không kết nối đúng mạng Wi-Fi phòng học (BSSID không khớp).");
+            }
+            // Nếu clientBssid rỗng hoặc dummy (ví dụ 02:00:00:00:00:00 do Android tắt GPS/chưa cấp quyền vị trí),
+            // sẽ tự động rơi xuống bước kiểm tra IP bên dưới để không chặn nhầm sinh viên đang ngồi trong lớp.
+        }
+
+        // Ưu tiên 2: Kiểm tra địa chỉ IP nếu chưa xác thực qua BSSID
+        String targetHostIp = (session.getHostPublicIp() != null && !session.getHostPublicIp().trim().isEmpty())
+                ? session.getHostPublicIp().trim()
+                : (session.getRoomNetworkIp() != null ? session.getRoomNetworkIp().trim() : "");
+
+        if (!wifiVerified && !targetHostIp.isEmpty()) {
+            // Server luôn sử dụng clientIp thực từ socket/proxy header, không dùng request.getClientIp() để chống spoofing
+            if (!IpUtil.isNetworkMatching(clientIp, targetHostIp)) {
+                syncLogService.logSync("CHECK_IN", "FAILED", "IP mismatch. Client: " + clientIp + ", Required: " + targetHostIp);
+                throw new AppException(HttpStatus.BAD_REQUEST, "Thiết bị không kết nối cùng mạng Wi-Fi với giảng viên (Địa chỉ IP không khớp).");
             }
         }
 
@@ -156,6 +200,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
                 .recordId(recordId)
                 .sessionId(session.getSessionId())
                 .studentId(student.getUserId())
+                .deviceId(deviceId)
                 .status("PRESENT")
                 .checkedAt(LocalDateTime.now())
                 .build();
@@ -170,6 +215,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
                 .studentFapCode(student.getFapCode())
                 .studentName(student.getFullName())
                 .status(record.getStatus())
+                .deviceId(record.getDeviceId())
                 .checkedAt(record.getCheckedAt())
                 .build();
     }

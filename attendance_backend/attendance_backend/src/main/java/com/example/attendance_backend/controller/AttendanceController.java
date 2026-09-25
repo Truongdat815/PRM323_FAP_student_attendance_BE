@@ -39,18 +39,12 @@ public class AttendanceController {
 
     @PostMapping("/check-in")
     @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
-    @Operation(summary = "Sinh viên điểm danh (qua mã QR hoặc mã PIN sessionCode 6 số)", description = "Sinh viên thực hiện điểm danh qua mã QR hoặc mã PIN sessionCode (kiểm tra điều kiện hoạt động, thời hạn, wifi phòng học và ghi danh)")
+    @Operation(summary = "Sinh viên điểm danh (qua mã QR động TOTP hoặc mã PIN sessionCode 6 số)", description = "Sinh viên thực hiện điểm danh qua mã QR động TOTP (tự đổi mỗi 10s) hoặc mã PIN sessionCode (kiểm tra điều kiện hoạt động, thời hạn, Wi-Fi BSSID/IP và thiết bị)")
     public ResponseEntity<ApiResponse<AttendanceRecordResponse>> checkIn(
             @Valid @RequestBody CheckInRequest request,
             Authentication authentication,
             HttpServletRequest httpServletRequest) throws IOException {
-        String clientIp = httpServletRequest.getHeader("X-Forwarded-For");
-        if (clientIp == null || clientIp.trim().isEmpty() || "unknown".equalsIgnoreCase(clientIp)) {
-            clientIp = httpServletRequest.getRemoteAddr();
-        } else if (clientIp.contains(",")) {
-            clientIp = clientIp.split(",")[0].trim();
-        }
-
+        String clientIp = com.example.attendance_backend.util.IpUtil.extractClientIp(httpServletRequest);
         AttendanceRecordResponse response = attendanceRecordService.checkIn(request, authentication.getName(), clientIp);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Điểm danh thành công", response));

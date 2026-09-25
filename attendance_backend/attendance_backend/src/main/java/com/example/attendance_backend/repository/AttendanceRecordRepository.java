@@ -17,4 +17,8 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     Optional<AttendanceRecord> findBySessionIdAndStudentId(String sessionId, String studentId);
 
     boolean existsBySessionIdAndStudentId(String sessionId, String studentId);
+
+    boolean existsBySessionIdAndDeviceId(String sessionId, String deviceId);
+
+    Optional<AttendanceRecord> findBySessionIdAndDeviceId(String sessionId, String deviceId);
 }

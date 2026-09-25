@@ -8,9 +8,13 @@ import java.util.List;
 
 public interface AttendanceSessionService {
 
+    SessionResponse createSession(SessionCreateRequest request, String currentUsername, String clientIp) throws IOException;
+
     SessionResponse createSession(SessionCreateRequest request, String currentUsername) throws IOException;
 
     SessionResponse getSessionById(String sessionId) throws IOException;
+
+    SessionResponse getCurrentQrToken(String sessionId) throws IOException;
 
     List<SessionResponse> getSessionsByCourse(String courseId) throws IOException;
 

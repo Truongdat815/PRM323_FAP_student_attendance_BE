@@ -19,5 +19,6 @@ public class AttendanceRecordResponse {
     private String studentFapCode;
     private String studentName;
     private String status;
+    private String deviceId;
     private LocalDateTime checkedAt;
 }

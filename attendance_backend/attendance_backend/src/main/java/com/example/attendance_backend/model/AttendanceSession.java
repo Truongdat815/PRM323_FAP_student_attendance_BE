@@ -32,6 +32,12 @@ public class AttendanceSession {
     @Column(name = "room_network_ip")
     private String roomNetworkIp;
 
+    @Column(name = "host_public_ip")
+    private String hostPublicIp;
+
+    @Column(name = "room_bssid")
+    private String roomBssid;
+
     @Column(name = "expired_at")
     private LocalDateTime expiredAt;
 
@@ -43,4 +49,7 @@ public class AttendanceSession {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "qr_refresh_seconds")
+    private Integer qrRefreshSeconds;
 }

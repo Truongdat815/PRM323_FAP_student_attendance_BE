@@ -19,6 +19,12 @@ public class SessionResponse {
     private String qrCodeSecret;
     private String qrCodeBase64;
     private String roomNetworkIp;
+    private String hostPublicIp;
+    private String roomBssid;
+    private String currentQrToken;
+    private Integer tokenRemainingSeconds;
+    private Integer tokenIntervalSeconds;
+    private Integer qrRefreshSeconds;
     private LocalDateTime expiredAt;
     private String sessionCode;
     private String status;

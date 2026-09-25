@@ -29,4 +29,10 @@ public class SessionCreateRequest {
     private LocalDateTime expiredAt;
 
     private String roomNetworkIp;
+
+    private String roomBssid;
+
+    @Min(value = 5, message = "Thời gian làm mới mã QR tối thiểu là 5 giây")
+    @Max(value = 300, message = "Thời gian làm mới mã QR tối đa là 300 giây (5 phút)")
+    private Integer qrRefreshSeconds;
 }

@@ -31,6 +31,9 @@ public class AttendanceRecord {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "device_id")
+    private String deviceId;
+
     @Column(name = "checked_at")
     private LocalDateTime checkedAt;
 }
